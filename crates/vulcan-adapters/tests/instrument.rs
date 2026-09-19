@@ -200,3 +200,24 @@ fn the_longest_ui_thread_task_is_the_longest_one() {
     let measured = measurement(&instrument, Metric::LongestUiThreadTask).expect("measured");
     assert!((measured - 40.0).abs() < 0.5, "expected the longest task, got {measured}ms");
 }
+
+/// Sampling must not cost anything the sampler would then report.
+///
+/// The macOS implementation used to shell out to `ps` on every observation. A
+/// three hundred sample run forked several hundred times, fork is charged to
+/// the parent, and a sleeping thread was measured using two thirds of a core.
+#[test]
+fn sampling_does_not_consume_what_it_measures() {
+    let instrument = Instrument::new();
+
+    let before = std::time::Instant::now();
+    for _ in 0..2_000 {
+        instrument.sample_memory();
+    }
+    let elapsed = before.elapsed();
+
+    assert!(
+        elapsed < Duration::from_millis(200),
+        "2000 memory samples took {elapsed:?}; sampling is spawning something"
+    );
+}

@@ -242,28 +242,45 @@ impl vulcan_app::ports::frame_recorder::FrameRecorderPort for Instrument {
     }
 }
 
-/// Resident set size, read from the kernel rather than estimated.
+/// Resident set size, from the kernel, without spawning anything.
 ///
-/// Two implementations, because the kernels expose it differently and the
-/// Linux one returned nothing on macOS — which left the memory budgets
-/// unmeasured on the runner that is supposed to be authoritative.
+/// An earlier macOS implementation shelled out to `ps`. `sample_memory` runs on
+/// every observation, so a three hundred sample run forked several hundred
+/// times, and the cost of forking is charged to the process being measured. It
+/// reported a sleeping thread using two thirds of a core. A measurement that
+/// consumes what it measures is not a measurement.
 #[cfg(target_os = "linux")]
 fn resident_kb() -> Option<u64> {
     let statm = std::fs::read_to_string("/proc/self/statm").ok()?;
     let pages: u64 = statm.split_whitespace().nth(1)?.parse().ok()?;
-    Some(pages * (page_size() / 1024))
+    Some(pages * 4)
 }
 
-/// `ps` reports resident size in kilobytes directly. Shelling out is not
-/// elegant, but the alternative is `task_info` through `mach`, and a dependency
-/// on a C binding for one number that this reads once a second is a poor trade.
 #[cfg(target_os = "macos")]
 fn resident_kb() -> Option<u64> {
-    let out = std::process::Command::new("ps")
-        .args(["-o", "rss=", "-p", &std::process::id().to_string()])
-        .output()
-        .ok()?;
-    String::from_utf8_lossy(&out.stdout).trim().parse().ok()
+    // mach_task_basic_info carries the resident size in bytes.
+    let mut info = libc::mach_task_basic_info {
+        virtual_size: 0,
+        resident_size: 0,
+        resident_size_max: 0,
+        user_time: libc::time_value_t { seconds: 0, microseconds: 0 },
+        system_time: libc::time_value_t { seconds: 0, microseconds: 0 },
+        policy: 0,
+        suspend_count: 0,
+    };
+    let mut count = (std::mem::size_of::<libc::mach_task_basic_info>()
+        / std::mem::size_of::<libc::natural_t>()) as libc::mach_msg_type_number_t;
+
+    // Safety: the task is our own, and the buffer and its length are matched.
+    let status = unsafe {
+        libc::task_info(
+            libc::mach_task_self(),
+            libc::MACH_TASK_BASIC_INFO,
+            &mut info as *mut _ as libc::task_info_t,
+            &mut count,
+        )
+    };
+    (status == libc::KERN_SUCCESS).then(|| info.resident_size / 1024)
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
@@ -271,28 +288,22 @@ fn resident_kb() -> Option<u64> {
     None
 }
 
-#[cfg(target_os = "linux")]
-fn page_size() -> u64 {
-    // 4 KiB everywhere this product targets; read it rather than assume when the
-    // platform disagrees.
-    4096
-}
-
 /// Processor time this process has consumed, across all its threads.
 ///
-/// The idle budget is about work done, and an earlier version inferred it from
-/// how far a sleep overran its deadline. That measures the scheduler's timer
-/// granularity, not the product: on macOS it reported ten percent of a core for
-/// a window that was doing nothing at all.
+/// `getrusage` is a syscall on both platforms this product targets, so reading
+/// it costs nothing that would show up in the reading.
 fn cpu_time() -> Option<Duration> {
-    let out = std::process::Command::new("ps")
-        .args(["-o", "time=", "-p", &std::process::id().to_string()])
-        .output()
-        .ok()?;
-    parse_cpu_time(String::from_utf8_lossy(&out.stdout).trim())
+    let mut usage: libc::rusage = unsafe { std::mem::zeroed() };
+    // Safety: the struct is zeroed and sized by the type.
+    if unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut usage) } != 0 {
+        return None;
+    }
+    let seconds = |t: libc::timeval| t.tv_sec as f64 + t.tv_usec as f64 / 1_000_000.0;
+    Some(Duration::from_secs_f64(seconds(usage.ru_utime) + seconds(usage.ru_stime)))
 }
 
 /// `ps` prints processor time as `MM:SS.ss`, or `HH:MM:SS` once it is large.
+/// Retained because the report format is still parsed from text elsewhere.
 pub fn parse_cpu_time(text: &str) -> Option<Duration> {
     let mut seconds = 0.0;
     for part in text.split(':') {

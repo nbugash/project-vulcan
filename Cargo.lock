@@ -5971,6 +5971,7 @@ dependencies = [
 name = "vulcan-adapters"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "png 0.18.1",
  "toml 1.1.6+spec-1.1.0",
  "vulcan-app",

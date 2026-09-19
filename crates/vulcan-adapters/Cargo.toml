@@ -8,6 +8,9 @@ rust-version.workspace = true
 layer = "Adapters"
 
 [dependencies]
+# For getrusage and mach task_info: reading this process's own resource use
+# must not spawn anything, because spawning is itself the work being measured.
+libc = "0.2"
 png = "0.18.1"
 toml = "1.0.7"
 vulcan-app = { path = "../vulcan-app" }
