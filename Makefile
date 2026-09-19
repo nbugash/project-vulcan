@@ -128,6 +128,22 @@ publish: ## Make the repository public — DRY RUN, prints what it would do
 publish-confirm: ## Make the repository public, for real. Irreversible in effect.
 	./tools/ci.sh publish --confirm
 
+.PHONY: cycle
+cycle: ## Public -> run CI -> restore visibility. DRY RUN.
+	./tools/ci.sh cycle
+
+.PHONY: cycle-confirm
+cycle-confirm: ## Public -> run CI -> restore visibility, for real
+	./tools/ci.sh cycle --confirm
+
+.PHONY: restore
+restore: ## Put visibility back after a cycle that was killed
+	./tools/ci.sh restore
+
+.PHONY: visibility-token
+visibility-token: ## Store the PAT the CI restore job needs
+	./tools/setup-visibility-token.sh
+
 # ---- Housekeeping ------------------------------------------------------------
 
 $(PY):

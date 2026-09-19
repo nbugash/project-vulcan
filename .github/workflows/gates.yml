@@ -9,6 +9,11 @@ on:
   # So the suite can be run deliberately — from `make ci`, or from the Actions
   # tab — rather than only as a side effect of pushing.
   workflow_dispatch:
+    inputs:
+      restore_private:
+        description: "Make the repository private again when the run finishes"
+        type: boolean
+        default: true
 
 jobs:
   boundary-and-tests:
@@ -136,3 +141,51 @@ jobs:
           cargo run --quiet -p gate-budget -- \
             --runner linux-cgroup \
             --report reports/budgets/linux-cgroup.json
+
+  # The finally block.
+  #
+  # `if: always()` runs this whatever happened above — a job failed, the whole
+  # run was cancelled, a runner died. It needs every other job in `needs` so it
+  # cannot start while one is still using the free public-repo minutes.
+  #
+  # Only on a deliberate dispatch that asked for it. A push to a repository that
+  # is public on purpose must not be quietly forced private, and the local
+  # `tools/ci.sh cycle` already covers the push case from the other side.
+  restore-visibility:
+    needs:
+      - boundary-and-tests
+      - fidelity
+      - budgets-authoritative
+      - budgets-advisory
+    if: always() && github.event_name == 'workflow_dispatch' && inputs.restore_private
+    runs-on: ubuntu-latest
+    steps:
+      - name: Make the repository private again
+        env:
+          # The built-in GITHUB_TOKEN cannot change visibility at any permission
+          # level, so this needs a token of its own. Fine-grained, this one
+          # repository only, Administration: read and write, short expiry.
+          GH_TOKEN: ${{ secrets.VISIBILITY_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::error::VISIBILITY_TOKEN is not set, so this run cannot make ${REPO} private again." >&2
+            echo "::error::Set it with: gh secret set VISIBILITY_TOKEN" >&2
+            exit 1
+          fi
+
+          for attempt in 1 2 3; do
+            current=$(gh repo view "${REPO}" --json visibility -q .visibility || echo UNKNOWN)
+            if [ "${current}" = "PRIVATE" ]; then
+              echo "${REPO} is private."
+              exit 0
+            fi
+            echo "attempt ${attempt}: ${current} -> PRIVATE"
+            gh repo edit "${REPO}" --visibility private \
+              --accept-visibility-change-consequences || true
+            sleep $(( attempt * 5 ))
+          done
+
+          # Anything reaching here has left the repository readable by the world.
+          echo "::error::${REPO} could not be made private. Fix it now: gh repo edit ${REPO} --visibility private --accept-visibility-change-consequences" >&2
+          exit 1

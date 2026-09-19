@@ -5,6 +5,8 @@
 #   ./tools/ci.sh publish    make the repository public, so Actions minutes on
 #                            standard runners stop being billed
 #   ./tools/ci.sh run        trigger the gates workflow and watch the macOS job
+#   ./tools/ci.sh cycle      make public, run CI, restore the previous visibility
+#   ./tools/ci.sh restore    put visibility back, for when a cycle was killed
 #
 # `publish` is irreversible in the way that matters: once a repository has been
 # public, anything in it may have been fetched, cached or indexed by third
@@ -137,8 +139,145 @@ run_ci() {
   gh run view "$id" --json conclusion,url -q '"\nconclusion: \(.conclusion)\nurl: \(.url)"'
 }
 
+# Where the intended visibility is recorded before anything changes. Inside
+# .git/ so it is never committed, and on disk rather than in a variable so that
+# a process killed outright still leaves evidence of what it owes.
+STAMP=".git/vulcan-visibility-restore"
+
+visibility_of() {
+  gh repo view "$1" --json visibility -q .visibility
+}
+
+# The finally block. Idempotent, retried, and loud when it cannot finish: a
+# repository left public by accident is the failure this whole command exists to
+# prevent, so it must never be reported quietly.
+restore_visibility() {
+  local code=$?
+  trap - EXIT INT TERM HUP
+
+  # Stop watching before restoring; the run continues on GitHub either way.
+  [ -n "${ci_pid:-}" ] && kill "$ci_pid" 2>/dev/null
+
+  [ -f "$STAMP" ] || exit "$code"
+  local slug want
+  slug=$(cut -d" " -f1 "$STAMP")
+  want=$(cut -d" " -f2 "$STAMP")
+
+  printf "\n--- restoring %s to %s ---\n" "$slug" "$want"
+
+  local attempt current
+  for attempt in 1 2 3 4 5; do
+    current=$(visibility_of "$slug" 2>/dev/null || echo UNKNOWN)
+    if [ "$current" = "$want" ]; then
+      rm -f "$STAMP"
+      printf "visibility restored to %s\n" "$want"
+      exit "$code"
+    fi
+    [ "$attempt" -gt 1 ] && sleep $(( attempt * 3 ))
+    printf "  attempt %d: setting %s ... " "$attempt" "$want"
+    if gh repo edit "$slug" --visibility "$(printf %s "$want" | tr "[:upper:]" "[:lower:]")" \
+         --accept-visibility-change-consequences >/dev/null 2>&1; then
+      printf "ok\n"
+    else
+      printf "failed\n"
+    fi
+  done
+
+  # Out of attempts. Say so in terms that cannot be skimmed past.
+  current=$(visibility_of "$slug" 2>/dev/null || echo UNKNOWN)
+  cat >&2 <<WARNING
+
+!!  COULD NOT RESTORE VISIBILITY
+!!
+!!  $slug is $current and should be $want.
+!!  The repository may still be public. Fix it now, by either:
+!!
+!!      ./tools/ci.sh restore
+!!      gh repo edit $slug --visibility $(printf %s "$want" | tr "[:upper:]" "[:lower:]") --accept-visibility-change-consequences
+!!
+!!  The note at $STAMP is left in place so a later run retries.
+
+WARNING
+  exit 1
+}
+
+# Make public, run CI, put it back. The restore runs whether the workflow passes,
+# fails, or the command is interrupted.
+cycle() {
+  require_gh
+  require_account
+  require_repo
+
+  local slug original
+  slug=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+  original=$(visibility_of "$slug")
+
+  printf "repository: %s\nvisibility: %s\n\n" "$slug" "$original"
+
+  if [ "$original" = "PUBLIC" ]; then
+    note "already public; running CI without changing anything"
+    run_ci
+    return
+  fi
+
+  scan_for_secrets
+  printf "\nThis makes %s public for as long as the run takes, then puts it\n" "$slug"
+  printf "back to %s. While public it can be read, cloned, forked and indexed\n" "$original"
+  printf "by anyone, and that cannot be undone by making it private again.\n" 
+
+  if [ "${1:-}" != "--confirm" ]; then
+    printf "\nDRY RUN. Nothing changed. Re-run to apply:\n  %s cycle --confirm\n" "$0"
+    return 0
+  fi
+
+  # Record the debt before incurring it, so even SIGKILL leaves a trail.
+  printf "%s %s %s\n" "$slug" "$original" "$(date -Is)" > "$STAMP"
+
+  # try / finally. EXIT covers success and any `exit`; the signal traps exist so
+  # that an interrupt reaches EXIT instead of killing the shell outright.
+  trap restore_visibility EXIT
+  trap "exit 130" INT
+  trap "exit 143" TERM
+  trap "exit 129" HUP
+
+  printf "\n--- making public ---\n"
+  gh repo edit "$slug" --visibility public --accept-visibility-change-consequences
+  printf "public: %s\n" "$(visibility_of "$slug")"
+
+  printf "\n--- running CI ---\n"
+  # Run it in the background and wait, rather than in the foreground.
+  #
+  # bash defers a trap until the current foreground command returns, so an
+  # interrupt during `gh run watch` — which blocks for as long as the workflow
+  # takes — would not reach the restore until the watch finished on its own.
+  # `wait` is interruptible, so the trap fires immediately and the repository
+  # goes back to private while the run is still going.
+  set +e
+  run_ci &
+  local ci_pid=$!
+  wait "$ci_pid"
+  local ci_code=$?
+  set -e
+  printf "\nCI finished with code %d\n" "$ci_code"
+
+  exit "$ci_code"
+}
+
+# For a cycle that was killed before it could put things back.
+restore() {
+  require_gh
+  if [ ! -f "$STAMP" ]; then
+    note "no interrupted cycle recorded; nothing to restore"
+    return 0
+  fi
+  trap restore_visibility EXIT
+  exit 0
+}
+
 case "${1:-}" in
   publish) shift; publish "$@" ;;
   run)     shift; run_ci "$@" ;;
-  *) printf 'usage: %s {publish [--confirm]|run}\n' "$0" >&2; exit 2 ;;
+  cycle)   shift; cycle "$@" ;;
+  restore) shift; restore "$@" ;;
+  *) printf 'usage: %s {publish [--confirm]|run|cycle [--confirm]|restore}\n' "$0" >&2; exit 2 ;;
 esac
