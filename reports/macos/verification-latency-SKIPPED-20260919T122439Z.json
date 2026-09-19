@@ -1,0 +1,10 @@
+{
+  "check": "latency",
+  "status": "SKIPPED",
+  "summary": "needs sudo; re-run with --sudo to include it",
+  "recorded_at": "2026-09-19T12:24:49Z",
+  "run": "20260919T122439Z",
+  "commit": "a3119cf10cace87da63b2fd9895ede9a65c62c77",
+  "host": { "arch": "arm64", "os": "26.6.2" },
+  "detail": "dnctl and pfctl require privilege. This path has never been run on a Mac and is the one most likely to be wrong."
+}

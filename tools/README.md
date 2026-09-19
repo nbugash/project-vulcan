@@ -202,6 +202,17 @@ at all, and the reference it produces is byte-identical to one captured on a net
 machine. Typefaces and icons are vendored under `mockups/fonts/` and `mockups/icons/` and load
 from the repository.
 
+## Before anything else
+
+```bash
+make setup           # report what this machine is missing
+make setup-install   # and set up the Python tooling it can
+```
+
+It reports rather than installs: system packages are printed as commands to run,
+because a build script that runs `sudo` against a package manager is one that can
+break a machine it does not understand.
+
 ## Verifying on a Mac
 
 Some things cannot be answered from Linux, and the most important of them is
@@ -228,7 +239,8 @@ prerequisite should cost a second rather than eight minutes of compiling.
 | Requirement | Why | If it is missing |
 |---|---|---|
 | A Mac with Apple Silicon | An Intel Mac cannot answer the topology question | The script stops |
-| Xcode Command Line Tools | clang for the `cc` crate, libclang for `bindgen`, and the SDK holding Metal, which is how GPUI presents here | `xcode-select --install` |
+| Xcode Command Line Tools | clang for the `cc` crate, libclang for `bindgen` | `xcode-select --install` |
+| **Full Xcode** | GPUI compiles its Metal shaders during the build, and the `metal` compiler is not in the Command Line Tools | Install Xcode, then `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer` |
 | rustup | Installs the toolchain `rust-toolchain.toml` pins | [rustup.rs](https://rustup.rs) |
 | About 10 GB free | Most of it the build | Free some space |
 | A logged-in desktop session | GPUI needs a window server to open a window | Only the `shell-render` check fails; the rest still run |

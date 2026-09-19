@@ -10,9 +10,9 @@
 #
 #   * a Mac with Apple Silicon — an Intel Mac cannot answer the question this
 #     script exists to ask
-#   * Xcode Command Line Tools: `xcode-select --install`. Provides clang for the
-#     `cc` crate, libclang for `bindgen`, and the SDK holding Metal, which is how
-#     GPUI presents on this platform
+#   * Xcode Command Line Tools: `xcode-select --install`, for clang and libclang
+#   * full Xcode, for the `metal` shader compiler. GPUI compiles its shaders
+#     during the build and the Command Line Tools do not ship that compiler
 #   * rustup, which installs the toolchain rust-toolchain.toml pins by itself
 #   * roughly 10 GB free, most of it the build
 #   * a logged-in desktop session for the check that opens a window; over SSH
@@ -120,6 +120,16 @@ if [ "$(uname -s)" = "Darwin" ]; then
     printf '  %-34s %s\n' "Xcode Command Line Tools" "$(xcode-select -p)"
   else
     need "Xcode Command Line Tools" "run: xcode-select --install"
+  fi
+
+  # GPUI compiles its Metal shaders in a build script, and `metal` ships with
+  # full Xcode rather than the Command Line Tools. Checked here because the
+  # alternative is finding out several minutes into a build, which is how this
+  # check came to exist.
+  if xcrun -f metal >/dev/null 2>&1; then
+    printf '  %-34s %s\n' "metal shader compiler" "$(xcrun -f metal)"
+  else
+    need "metal shader compiler" "install Xcode, then: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer && xcodebuild -runFirstLaunch"
   fi
 fi
 

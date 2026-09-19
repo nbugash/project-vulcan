@@ -31,6 +31,14 @@ help: ## List the targets
 
 # ---- Development -------------------------------------------------------------
 
+.PHONY: setup
+setup: ## Check this machine has what Vulcan needs
+	./tools/setup.sh
+
+.PHONY: setup-install
+setup-install: ## The same, and set up the optional Python tooling
+	./tools/setup.sh --install
+
 .PHONY: build
 build: ## Compile the workspace
 	cargo build --workspace
