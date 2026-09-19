@@ -1,5 +1,38 @@
 <!--
 SYNC IMPACT REPORT
+Version change: 3.0.1 -> 4.0.0
+Bump rationale: MAJOR. Two constitutions existed in parallel on separate branches
+with no shared history: a product-focused one on the original trunk, and an
+architecture-focused one written during F000. Neither was a draft of the other.
+This merges them, so the document governs both how the product must behave and
+how it must be built.
+
+Carried forward from the original trunk, renumbered and otherwise unchanged:
+- X. The Keystroke Path Is Sacred
+- XI. Snapshots, Cancellation, Versioned Results
+- XII. No Feature Waits on a Server or an Index
+- XIII. Local and Remote Are One Implementation
+- XIV. Extensions Are Data First, Sandboxed Code Second
+
+Reconciled rather than duplicated, because each had a counterpart:
+- Budgets Are CI Gates -> VI. Runs on the Baseline Machine
+- Test-First -> V. Test at the Boundary
+- The Approved Mock Governs the Interface -> VIII. Prototype Fidelity
+- Bounded Footprint on Modest Hardware -> VI. Runs on the Baseline Machine
+
+Corrected: the baseline machine is 6 CPU cores and 8 GB, not the 5 CPUs and
+12 GB the original trunk stated. Every Principle VI budget is measured against
+the corrected figure. One consequential reference inside Principle XIV was
+updated from 12 GB to 8 GB to match.
+
+Modified principles: none of I-IX changed.
+Added sections: principles X through XIV.
+Removed sections: none.
+Deferred items: none.
+-->
+
+<!--
+SYNC IMPACT REPORT
 Version change: 3.0.0 -> 3.0.1
 Bump rationale: PATCH. Principle VIII's requirement is unchanged: departures from the
 signed-off prototype must be recorded and returned to the designer. What changes is where
@@ -347,6 +380,131 @@ reference valid forever. Binding the checkboxes to the gates rather than to a ju
 of progress is what stops the map from becoming an optimistic summary, which is the
 normal way a tracking document stops being consulted.
 
+### X. The Keystroke Path Is Sacred (NON-NEGOTIABLE)
+
+Nothing crosses a process boundary, a network boundary, or a lock that a background thread can
+hold, between a key event and the pixel it produces. The path does exactly three things: mutate
+the buffer, re-shape the affected line(s), repaint the damaged rectangle.
+
+- Keystroke → paint MUST complete within one 120 Hz frame. The frame deadline is **8.33 ms**;
+  the CI gate is set at **8.0 ms p99**, preserving roughly 4% margin so that harness jitter
+  cannot let a genuinely dropped frame pass. Scroll tick → paint meets the same gate.
+  Where the design doc states 8 ms and 8.3 ms in different places, this is the distinction it is
+  drawing without naming: 8.33 ms is physics, 8.0 ms is the threshold Vulcan enforces.
+- The hot path MUST NOT perform blocking I/O, acquire a contended lock, allocate unboundedly,
+  parse JSON, or await any response from a language server, debug adapter, extension, index,
+  or remote agent.
+- Any design that places serialization between keystroke and glyph MUST be rejected at review
+  time, regardless of its other merits. This is the error that ended xi-editor and the reason
+  Electron editors measurably lag native ones.
+- Input arriving mid-frame is processed for the next frame. Worst-case latency is therefore
+  bounded at roughly two frames by construction, not by tuning.
+
+**Rationale:** §4.1 records the same JVM editor moving from 24.7 ms mean / 239.3 ms max to
+2.9 ms mean by removing a per-keystroke document lock and an over-broad repaint — a ~20× swing
+with the language held constant. Hot-path discipline is the single largest lever available, and
+it is an architectural property that cannot be recovered by optimization later. (§5.1, §10, §11,
+§19.1)
+
+### XI. Snapshots, Cancellation, Versioned Results
+
+The UI thread owns the truth. Every other consumer — syntax, indexer, diff, search, LSP/DAP
+clients, extensions, the remote agent — works on immutable copies.
+
+- Buffers and other UI-visible state MUST be mutated only on the UI thread.
+- Background work MUST receive an immutable snapshot plus a monotonic version number, never a
+  live reference.
+- Every background task MUST be cancellable and MUST be cancelled when an edit invalidates it.
+  In-flight completion and hover requests are cancelled on the next keystroke, and cancellation
+  MUST propagate across the remote channel to the server.
+- Every result MUST carry the version it was computed against. A result for an older version is
+  either mapped forward through anchors or discarded — never merged blind.
+- Positions that must survive edits (breakpoints, diagnostics, folds, bookmarks) MUST be stored
+  as anchors, never as raw offsets.
+- Results crossing back to the UI thread MUST be already-shaped and small. Decoding, merging,
+  ranking, and position conversion happen off the UI thread.
+
+**Rationale:** Cancellation-on-edit is the mechanism that prevents "the editor froze because
+completion was still computing against the old text." Anchors are why diagnostics do not drift
+onto the wrong line after an insertion above. A documented Neovim bug froze the UI for ~10 s on
+a ~2,000-item references response solely because the transformation ran on the main thread.
+(§9.1, §10, §14.3)
+
+### XII. No Feature Waits on a Server or an Index
+
+Language intelligence is advisory. The editor MUST remain fully usable at any server latency,
+including infinite, and at any index completeness, including zero.
+
+- A feature MUST NOT be disabled while indexing. Where an index-backed answer is unavailable,
+  the feature MUST degrade to a cheaper source — grammar-derived tags for symbols, a scanning
+  text search — rather than disappear. IntelliJ's "dumb mode" is the failure case being
+  designed against.
+- Stale results MUST be shown, visibly labelled as stale, rather than withheld pending a fresh
+  answer.
+- A crashed or hung server MUST NOT degrade editing. Restart uses exponential backoff; after N
+  failures the IDE stops and shows a non-blocking notice. All requests have timeouts.
+- Above a configured file-size threshold, the syntax layer and semantic features are switched off
+  and plain editing stays fast.
+- Diagnostics, diffs, and blame are recomputed on save or after a debounce. They are never on
+  the keystroke path.
+
+**Rationale:** "Snappy on any language" is a boundary-placement property, not a language
+property. Tree-sitter in-process for syntax and LSP/DAP out-of-process for semantics delivers it
+only if the editor genuinely never gates on the out-of-process half. (§9.5, §9.6, §13, §17.4,
+§18)
+
+### XIII. Local and Remote Are One Implementation
+
+Remote development is not a mode bolted onto a local IDE. It is the same code, running headless.
+
+- The remote agent MUST be the same codebase's Local variants of `Worktree`, `LspStore`,
+  `DapStore`, and the indexer, minus the UI crates. A second implementation of the VFS, the
+  buffer, or the indexer MUST NOT exist.
+- Core components MUST be reachable through one interface with Local and Remote variants, so
+  callers cannot tell which they hold.
+- The keystroke path is identical in both modes: buffer, undo, and syntax highlighting stay
+  local, and the network MUST NOT appear in steps 1–6 of the §11 trace. Typing measurably slower
+  in remote mode is an architecture defect, not a link problem.
+- The client is authoritative for text. The agent holds versioned shadow copies and applies the
+  same edit transactions.
+- What crosses the network MUST be Vulcan's compact binary protocol carrying already-shaped
+  results — never raw JSON-RPC, which would put decoding of large payloads on the least powerful
+  machine in the system. DAP and PTY streams are the deliberate exception and are forwarded
+  nearly raw.
+- Agent sessions MUST outlive their connection. A dropped link MUST NOT restart language servers,
+  terminals, debug sessions, or the indexer, and MUST NOT lose typed text. Reconnect resumes by
+  session ID and conflict-checks remote file state before replaying.
+
+**Rationale:** VS Code Remote, JetBrains Gateway/Fleet, and Zed converged on this split
+independently. Reusing the local concurrency model for remote means remote mode adds no new
+correctness surface, and it is what makes a small client machine viable. (§14)
+
+### XIV. Extensions Are Data First, Sandboxed Code Second
+
+The extension architecture is built in milestone 1; the public API is frozen and published only
+after Vulcan's own features ship through it.
+
+- There are exactly two extension kinds: **declarative packs** (manifest plus assets — grammars,
+  queries, language-server and debug-adapter definitions, themes, keymaps, snippets, run-config
+  templates) and **WASM extensions** (sandboxed, executed by an in-process WASM runtime, with
+  capability-based permissions declared up front in the manifest).
+- Adding a language MUST cost zero host code and no rebuild.
+- Extension calls MUST be asynchronous, run on the background pool, and be time-limited. A hung
+  extension is killed and reported; the UI thread MUST NOT await one.
+- Extensions MUST see buffer snapshots, never live buffers. Edits return as transactions the host
+  applies.
+- UI contributions MUST be declarative. Extensions describe panels, status-bar items, tree views,
+  and commands as data; the host renders them. Extensions MUST NOT draw pixels or run on the UI
+  thread.
+- Per-extension memory and CPU MUST be metered and visible in the resource panel.
+- Vulcan's own Java pack, default theme, and IntelliJ keymap MUST ship through this system before
+  any third party sees the API.
+
+**Rationale:** IntelliJ's in-process JVM plugins buy unmatched depth and cost the ability to
+guarantee anything about latency or memory. On an 8 GB machine, isolation is the correct trade.
+Dogfooding the API before publishing it is the only way to avoid guessing at its shape.
+(§9.11, §17.5)
+
 ## Architectural Constraints
 
 Every new project, service, or deployable in this repository MUST be scaffolded as
@@ -559,4 +717,4 @@ Compliance is reviewed at three points: at `/speckit-plan`, where the plan recor
 the feature satisfies each principle; at review time, through the gates above; and on
 amendment, when open work is assessed against the new version.
 
-**Version**: 3.0.1 | **Ratified**: 2026-09-18 | **Last Amended**: 2026-09-18
+**Version**: 4.0.0 | **Ratified**: 2026-09-18 | **Last Amended**: 2026-09-19
