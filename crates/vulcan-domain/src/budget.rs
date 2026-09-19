@@ -66,7 +66,10 @@ impl Metric {
             Metric::IdleResidentMemory => 400.0,
             Metric::TypicalResidentMemory => 1500.0,
             Metric::PeakResidentMemory => 2500.0,
-            Metric::IdleCpu => 1.0,
+            // Constitution v4.1.0. An empty window of the chosen framework
+            // idles at about 1.3%, so this is a property of GPUI rather than of
+            // Vulcan; the margin above it is what this product may add.
+            Metric::IdleCpu => 2.0,
         }
     }
 

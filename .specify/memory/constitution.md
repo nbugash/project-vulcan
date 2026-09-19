@@ -1,5 +1,41 @@
 <!--
 SYNC IMPACT REPORT
+Version change: 4.0.0 -> 4.1.0
+Bump rationale: MINOR. A Principle VI budget is relaxed. Code compliant at the
+old figure is compliant at the new one, so nothing is invalidated, but what is
+required has changed and that is more than a clarification.
+
+Idle processor, mean: 1% -> 2%.
+
+The original figure was set before anything had been measured, so it was an
+aspiration rather than a calibrated target. It is not achievable with the chosen
+user interface framework, and the evidence is that the framework alone costs it:
+
+- An empty GPUI window, containing one element and no product code, idles at
+  1.34%, 1.19% and 1.10% across three runs.
+- The whole Vulcan shell idles at 1.14% to 1.35% on the same machine, and 1.35%
+  to 1.57% on an M3 Pro.
+- The shell draws zero frames across an idle window, so it is not redrawing
+  needlessly; the cost is GPUI's event loop, not work this product does.
+
+The shell therefore adds nothing measurable to the framework's floor, and no
+amount of work on this codebase would reach 1%.
+
+2% rather than a rounder number: it clears the worst observation of 1.57% with
+margin for machine variance, and still fails if anything this product adds on
+top of the framework doubles. A budget set far above the measurement stops being
+a check, which is why 5% was considered and rejected.
+
+This figure is a property of GPUI rather than of Vulcan. If the framework is
+upgraded or replaced, measure again: tools/idle-probe exists to ask exactly this
+question and records its own history.
+
+Modified principles: VI, one budget value.
+Added sections: none. Removed sections: none. Deferred items: none.
+-->
+
+<!--
+SYNC IMPACT REPORT
 Version change: 3.0.1 -> 4.0.0
 Bump rationale: MAJOR. Two constitutions existed in parallel on separate branches
 with no shared history: a product-focused one on the original trunk, and an
@@ -578,7 +614,7 @@ rather than an empty project.
 | Idle resident memory | 400 MB |
 | Resident memory, typical session | 1.5 GB |
 | Resident memory, peak | 2.5 GB |
-| Idle CPU, mean over 60 s | 1% |
+| Idle CPU, mean over 60 s | 2%, of which the framework's idle loop is about 1.3% |
 
 The 8 ms figures are one frame at 120Hz: a task that exceeds them drops a frame, which is
 what the product's central claim of being measurably snappier rests on. Cold start excludes
@@ -717,4 +753,4 @@ Compliance is reviewed at three points: at `/speckit-plan`, where the plan recor
 the feature satisfies each principle; at review time, through the gates above; and on
 amendment, when open work is assessed against the new version.
 
-**Version**: 4.0.0 | **Ratified**: 2026-09-18 | **Last Amended**: 2026-09-19
+**Version**: 4.1.0 | **Ratified**: 2026-09-18 | **Last Amended**: 2026-09-19

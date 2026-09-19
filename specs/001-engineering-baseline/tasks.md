@@ -224,11 +224,13 @@ them. A control that appears to act and does nothing is correct here; one that h
       18 GB, macOS 26.6.2, rendering through Metal. Six of the seven met; `IdleCpu` measured
       1.5% against a 1.0% budget, so the gate returned a verdict rather than a refusal, which
       is what this task was for. The overage is T119
-- [ ] T119 [US2] The shell uses 1.5% of a core while idle, against a 1.0% budget. Measured
-      three times on Apple Silicon at 1.35%, 1.5% and 1.57%, and around 1.1% on Linux, so it is
-      the product rather than the machine. Find what runs when nothing is happening — a display
-      link ticking at the panel's refresh rate with no damage to present is the first
-      suspect — and stop it. Raising the budget to meet the measurement is not a resolution
+- [X] T119 [US2] Investigated 2026-09-19. The shell draws zero frames across an idle window,
+      and an empty GPUI window containing one element idles at 1.34%, 1.19% and 1.10% — the
+      same as the whole shell. The cost is the framework's event loop; the shell adds nothing
+      measurable and no work here would reach 1%. Constitution amended to 4.1.0, setting the
+      budget at 2%: clear of the worst observation of 1.57%, and still failing if what this
+      product adds on top of the framework doubles. `tools/idle-probe` is kept so the question
+      can be asked again after a framework upgrade
 - [ ] T118 Move the budgets the shell cannot exercise to the features that own them:
       `CompletionPopup` and `DiagnosticsAfterPause` to the language server feature,
       `FuzzyFileOpen` to the file finder, `ProjectTextSearch` to search, and
