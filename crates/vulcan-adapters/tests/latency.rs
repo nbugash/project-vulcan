@@ -57,3 +57,18 @@ fn the_profiles_are_the_ones_the_budgets_are_stated_against() {
     use vulcan_adapters::measurement::latency::PROFILES;
     assert_eq!(PROFILES, [0, 10, 30, 80]);
 }
+
+/// dnctl separates the number from its unit, which the first parser missed —
+/// it applied a delay on a Mac and then refused because it could not read it
+/// back.
+#[test]
+fn dnctl_prints_the_unit_as_a_separate_word() {
+    assert_eq!(parse_delay("00001: unlimited    10 ms burst 0"), Some(10.0));
+    assert_eq!(parse_delay("00001: unlimited     5 ms burst 0"), Some(5.0));
+}
+
+#[test]
+fn a_pipe_with_no_delay_reports_none() {
+    assert_eq!(parse_delay("00001: unlimited     0 ms burst 0"), Some(0.0));
+    assert_eq!(parse_delay("00001: unlimited  burst 0"), None);
+}

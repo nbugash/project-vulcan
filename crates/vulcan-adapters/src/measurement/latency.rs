@@ -185,13 +185,33 @@ fn pipe_into(program: &str, args: &[&str], stdin: &str) -> bool {
 /// `tc`:    `qdisc netem 8001: root refcnt 2 limit 1000 delay 40ms`
 /// `dnctl`: `00001:  10.000ms    0 ms burst 0` — the delay carries the unit.
 pub fn parse_delay(text: &str) -> Option<f64> {
-    let after = text.split("delay ").nth(1).or_else(|| {
-        // dnctl prints the delay before the word, as `40.000ms`.
-        text.split_whitespace().find(|word| word.ends_with("ms") && word.len() > 2)
-    })?;
-    let value = after.split_whitespace().next()?;
-    value
-        .strip_suffix("ms")
-        .and_then(|n| n.parse().ok())
-        .or_else(|| value.strip_suffix("us").and_then(|n| n.parse::<f64>().ok()).map(|us| us / 1000.0))
+    // `tc`:    "... limit 1000 delay 40ms"
+    // `dnctl`: "00001: unlimited    10 ms burst 0" — the unit is a separate word
+    if let Some(after) = text.split("delay ").nth(1) {
+        if let Some(value) = after.split_whitespace().next().and_then(as_millis) {
+            return Some(value);
+        }
+    }
+
+    let words: Vec<&str> = text.split_whitespace().collect();
+    for (index, word) in words.iter().enumerate() {
+        if let Some(value) = as_millis(word) {
+            return Some(value);
+        }
+        // A bare number followed by its unit.
+        if (*word == "ms" || *word == "us") && index > 0 {
+            if let Ok(number) = words[index - 1].parse::<f64>() {
+                return Some(if *word == "us" { number / 1000.0 } else { number });
+            }
+        }
+    }
+    None
+}
+
+/// A word carrying its own unit, such as `40ms` or `500us`.
+fn as_millis(word: &str) -> Option<f64> {
+    if let Some(n) = word.strip_suffix("ms") {
+        return n.parse().ok();
+    }
+    word.strip_suffix("us").and_then(|n| n.parse::<f64>().ok()).map(|us| us / 1000.0)
 }

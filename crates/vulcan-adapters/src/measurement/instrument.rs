@@ -274,7 +274,7 @@ fn resident_kb() -> Option<u64> {
     // Safety: the task is our own, and the buffer and its length are matched.
     let status = unsafe {
         libc::task_info(
-            libc::mach_task_self(),
+            libc::mach_task_self_,
             libc::MACH_TASK_BASIC_INFO,
             &mut info as *mut _ as libc::task_info_t,
             &mut count,

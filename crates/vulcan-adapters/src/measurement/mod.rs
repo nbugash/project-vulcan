@@ -31,10 +31,26 @@ pub(crate) fn run_measured(
         )));
     }
 
-    let text = std::fs::read_to_string(&report_path)
-        .map_err(|_| MeasurementError::MetricUnavailable("no report was written".into()))?;
+    let text = std::fs::read_to_string(&report_path).map_err(|_| {
+        MeasurementError::MetricUnavailable(format!(
+            "no report was written to {}",
+            report_path.display()
+        ))
+    })?;
 
     let parsed = crate::measurement::instrument::parse_report(&text);
+
+    // When a metric is missing, the useful question is what the run did
+    // produce. Saying so turns "KeystrokeToPaint missing" from a dead end into
+    // something a reader can act on, and the report stays on disk to inspect.
+    if !parsed.iter().any(|(name, _)| name == Metric::KeystrokeToPaint.name()) {
+        let produced: Vec<&str> = parsed.iter().map(|(name, _)| name.as_str()).collect();
+        eprintln!(
+            "note: the measured run produced {:?} and is kept at {}",
+            produced,
+            report_path.display()
+        );
+    }
     let measurements: Vec<BudgetMeasurement> = Metric::ALL
         .iter()
         .filter_map(|metric| {
