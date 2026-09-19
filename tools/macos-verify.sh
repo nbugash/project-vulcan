@@ -31,9 +31,8 @@ WITH_SUDO=0
 
 mkdir -p "$OUT"
 
-# One stamp for the whole run, so every file from a single run groups together
-# and successive runs accumulate rather than overwrite. Colons are left out
-# because they travel badly through filesystems and URLs.
+# One stamp for the whole run, so every file it writes groups together. Colons
+# are left out because they travel badly through filesystems and URLs.
 RUN_AT=$(date -u +%Y%m%dT%H%M%SZ)
 
 passed=0
@@ -149,6 +148,19 @@ if [ "$missing" -gt 0 ]; then
   exit 1
 fi
 echo
+
+# Only now, with the prerequisites known good. Clearing before the checks above
+# would throw away a previous run's results in order to then do nothing.
+#
+# One run's results at a time: nine files each, kept across runs, is a directory
+# nobody reads. The stamp says when; it is not there to build a history.
+stale=$(ls -1 "$OUT" 2>/dev/null | wc -l | tr -d ' ')
+if [ "${stale:-0}" -gt 0 ]; then
+  echo "Clearing $stale file(s) from a previous run:"
+  ls -1 "$OUT" | sed 's/^/  /'
+  rm -f "$OUT"/*.json
+  echo
+fi
 
 # ---- 1. The machine ----------------------------------------------------------
 # The open question the whole budget gate rests on: does this Mac report

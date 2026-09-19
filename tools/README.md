@@ -216,8 +216,9 @@ make macos-verify-sudo     # also the latency profiles
 ```
 
 Nine checks, each writing `reports/macos/verification-<check>-<STATUS>-<run>.json`.
-Every file from one run shares a stamp, so runs accumulate rather than overwrite
-and several runs can be compared.
+Every file from one run shares a stamp, and the directory holds one run at a
+time: it is cleared at the start, after the prerequisites are checked, so a run
+that bails on a missing prerequisite leaves the previous results alone.
 
 ### What it needs
 
