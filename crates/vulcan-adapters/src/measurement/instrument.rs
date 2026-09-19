@@ -95,6 +95,24 @@ impl Instrument {
             .fetch_add(window.as_nanos() as u64, Ordering::Relaxed);
     }
 
+    /// Watches the idle window from inside, using processor time rather than
+    /// timer drift. Returns once the window has elapsed.
+    ///
+    /// The caller used to compute `busy` by subtracting a requested sleep from
+    /// its actual duration, which measures how coarse the platform's timers are.
+    /// On macOS that reported ten percent of a core for a window in which the
+    /// product did nothing.
+    pub fn observe_idle_over(&self, window: Duration) {
+        let before = cpu_time();
+        let started = Instant::now();
+        std::thread::sleep(window);
+        let elapsed = started.elapsed();
+
+        if let (Some(before), Some(after)) = (before, cpu_time()) {
+            self.observe_idle(after.saturating_sub(before), elapsed);
+        }
+    }
+
     pub fn sample_memory(&self) {
         if let Some(kb) = resident_kb() {
             self.peak_memory_kb.fetch_max(kb, Ordering::Relaxed);
@@ -193,16 +211,62 @@ impl vulcan_app::ports::frame_recorder::FrameRecorderPort for Instrument {
 }
 
 /// Resident set size, read from the kernel rather than estimated.
+///
+/// Two implementations, because the kernels expose it differently and the
+/// Linux one returned nothing on macOS — which left the memory budgets
+/// unmeasured on the runner that is supposed to be authoritative.
+#[cfg(target_os = "linux")]
 fn resident_kb() -> Option<u64> {
     let statm = std::fs::read_to_string("/proc/self/statm").ok()?;
     let pages: u64 = statm.split_whitespace().nth(1)?.parse().ok()?;
     Some(pages * (page_size() / 1024))
 }
 
+/// `ps` reports resident size in kilobytes directly. Shelling out is not
+/// elegant, but the alternative is `task_info` through `mach`, and a dependency
+/// on a C binding for one number that this reads once a second is a poor trade.
+#[cfg(target_os = "macos")]
+fn resident_kb() -> Option<u64> {
+    let out = std::process::Command::new("ps")
+        .args(["-o", "rss=", "-p", &std::process::id().to_string()])
+        .output()
+        .ok()?;
+    String::from_utf8_lossy(&out.stdout).trim().parse().ok()
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn resident_kb() -> Option<u64> {
+    None
+}
+
+#[cfg(target_os = "linux")]
 fn page_size() -> u64 {
     // 4 KiB everywhere this product targets; read it rather than assume when the
     // platform disagrees.
     4096
+}
+
+/// Processor time this process has consumed, across all its threads.
+///
+/// The idle budget is about work done, and an earlier version inferred it from
+/// how far a sleep overran its deadline. That measures the scheduler's timer
+/// granularity, not the product: on macOS it reported ten percent of a core for
+/// a window that was doing nothing at all.
+fn cpu_time() -> Option<Duration> {
+    let out = std::process::Command::new("ps")
+        .args(["-o", "time=", "-p", &std::process::id().to_string()])
+        .output()
+        .ok()?;
+    parse_cpu_time(String::from_utf8_lossy(&out.stdout).trim())
+}
+
+/// `ps` prints processor time as `MM:SS.ss`, or `HH:MM:SS` once it is large.
+pub fn parse_cpu_time(text: &str) -> Option<Duration> {
+    let mut seconds = 0.0;
+    for part in text.split(':') {
+        seconds = seconds * 60.0 + part.parse::<f64>().ok()?;
+    }
+    Some(Duration::from_secs_f64(seconds))
 }
 
 /// Parses a report a measured process wrote, for the runner that collects it.

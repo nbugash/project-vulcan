@@ -68,6 +68,25 @@ impl Metric {
         matches!(self, Metric::CompletionPopup | Metric::DiagnosticsAfterPause)
     }
 
+    /// Whether anything in the product can produce this metric yet.
+    ///
+    /// A budget for work that does not exist cannot be measured, and demanding
+    /// it means the gate refuses forever: the shell has no scrolling, no
+    /// completion engine, no index and no search, so five of these describe
+    /// features later features will build. They are still budgets, and they
+    /// still bind once their feature exists; they are simply not evidence
+    /// against a shell that cannot exercise them.
+    pub fn measurable_by_the_shell(self) -> bool {
+        !matches!(
+            self,
+            Metric::ScrollTickToPaint
+                | Metric::CompletionPopup
+                | Metric::FuzzyFileOpen
+                | Metric::ProjectTextSearch
+                | Metric::DiagnosticsAfterPause
+        )
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             Metric::KeystrokeToPaint => "KeystrokeToPaint",

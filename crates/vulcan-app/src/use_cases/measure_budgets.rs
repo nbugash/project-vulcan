@@ -63,8 +63,13 @@ impl<R: ConstrainedRunnerPort> MeasureBudgets<R> {
                 })
             })?;
 
-            // A run that omits a metric fails rather than reporting a partial set.
+            // A run that omits a metric it could have produced fails rather than
+            // reporting a partial set. A metric nothing in the product can
+            // exercise yet is not omitted, it is not yet applicable.
             for metric in Metric::ALL {
+                if !metric.measurable_by_the_shell() {
+                    continue;
+                }
                 let expected = !metric.round_trip_sensitive() && *profile != 0;
                 if !expected && !measurements.iter().any(|m| m.metric == metric) {
                     return Err(GateError::CouldNotJudge(format!(

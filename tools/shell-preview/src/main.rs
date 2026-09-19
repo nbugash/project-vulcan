@@ -135,17 +135,16 @@ fn main() {
                         .await;
                 }
 
-                // Idle behaviour is real: the shell is up and doing nothing, and
-                // this samples what that costs.
-                // Overshoot past the requested sleep is work the shell did while
-                // idle: scheduling, compositing, anything on a timer.
-                let requested = std::time::Duration::from_millis(8);
-                for _ in 0..120 {
-                    let started = std::time::Instant::now();
-                    cx.background_executor().timer(requested).await;
-                    let window = started.elapsed();
-                    instrument.observe_idle(window.saturating_sub(requested), window);
-                }
+                // Idle behaviour is real: the shell is up and doing nothing,
+                // and this measures the processor time that costs. One window
+                // rather than a hundred short ones, because the reading is
+                // processor time consumed and a short window is mostly noise.
+                let idle = instrument.clone();
+                cx.background_executor()
+                    .spawn(async move {
+                        idle.observe_idle_over(std::time::Duration::from_secs(2));
+                    })
+                    .await;
                 instrument.sample_memory();
 
                 let report = instrument.to_json(Runner::LinuxCgroup, "unconstrained", 0);
