@@ -6,6 +6,9 @@ name: gates
 on:
   push:
   pull_request:
+  # So the suite can be run deliberately — from `make ci`, or from the Actions
+  # tab — rather than only as a side effect of pushing.
+  workflow_dispatch:
 
 jobs:
   boundary-and-tests:
