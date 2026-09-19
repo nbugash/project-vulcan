@@ -2,7 +2,6 @@ pub mod apple_silicon;
 pub mod baseline;
 pub mod instrument;
 pub mod linux_cgroup;
-pub mod netem;
 pub mod report_store;
 
 use vulcan_app::ports::constrained_runner::MeasurementError;

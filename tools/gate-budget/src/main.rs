@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use vulcan_adapters::measurement::apple_silicon::AppleSiliconRunner;
 use vulcan_adapters::measurement::baseline::Baseline;
 use vulcan_adapters::measurement::linux_cgroup::LinuxCgroupRunner;
-use vulcan_adapters::measurement::netem::PROFILES;
+use vulcan_adapters::measurement::latency::PROFILES;
 use vulcan_adapters::measurement::report_store::MeasurementReport;
 use vulcan_app::ports::constrained_runner::ConstrainedRunnerPort;
 use vulcan_app::use_cases::measure_budgets::{MeasureBudgets, MeasureBudgetsInput};

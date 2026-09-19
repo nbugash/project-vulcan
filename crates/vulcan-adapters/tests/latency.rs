@@ -45,3 +45,15 @@ fn a_profile_that_cannot_be_applied_refuses_rather_than_reporting() {
 fn the_zero_profile_needs_no_privilege() {
     assert!(InjectedLatency::apply(0).is_ok(), "0ms is the absence of a delay");
 }
+
+/// The macOS backend reports delays in dnctl's format, which differs from tc's.
+#[test]
+fn a_dnctl_pipe_listing_is_understood() {
+    assert_eq!(parse_delay("00001:  40.000ms    0 ms burst 0"), Some(40.0));
+}
+
+#[test]
+fn the_profiles_are_the_ones_the_budgets_are_stated_against() {
+    use vulcan_adapters::measurement::latency::PROFILES;
+    assert_eq!(PROFILES, [0, 10, 30, 80]);
+}

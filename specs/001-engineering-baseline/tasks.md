@@ -219,7 +219,16 @@ them. A control that appears to act and does nothing is correct here; one that h
 - [X] T099 [US5] Record every state reached that the prototype does not depict as a prototype extension, per FR-033
 - [X] T100 [US5] Add the build check that fails when an unrecorded prototype extension is present, closing FR-016 and FR-033
 - [X] T101 [US5] Capture the fidelity reference from the shell and confirm the comparison reports no difference
-- [ ] T102 [US5] Measure the shell against every budget on the authoritative runner, confirming the gate has a real subject
+- [ ] T102 [US5] Measure the shell against every budget **it can exercise** on the authoritative
+      runner, confirming the gate has a real subject. Seven of the eighteen declared metrics are
+      reachable from a shell with no language server, index or search: cold start, longest
+      UI-thread task, keystroke to paint, the three resident memory figures, and idle processor.
+      The rest are deferred to the features that create them (T118)
+- [ ] T118 Move the budgets the shell cannot exercise to the features that own them:
+      `CompletionPopup` and `DiagnosticsAfterPause` to the language server feature,
+      `FuzzyFileOpen` to the file finder, `ProjectTextSearch` to search, and
+      `ScrollTickToPaint` to whichever feature makes the editor scroll. Each is unmeasurable
+      until its feature exists, and a budget nothing can measure is a budget nothing enforces
 - [X] T112 [US5] Make the shell respond to input. It renders every state but handles no event:
       there is no `on_click`, no key binding, and props are fixed at construction, so
       quickstart.md's "Prove it responds" section cannot be performed. Covers the rail, the

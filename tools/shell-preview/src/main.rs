@@ -49,7 +49,7 @@ fn main() {
             .expect("vendored typefaces load");
 
         let bounds = Bounds::centered(None, size(px(1440.0), px(900.0)), cx);
-        cx.open_window(
+        let window = cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 ..Default::default()
@@ -111,6 +111,29 @@ fn main() {
                 cx.background_executor()
                     .timer(std::time::Duration::from_secs(3))
                     .await;
+
+                // Drive the shell the way a person does, so the input-to-paint
+                // budget has something to measure. Each of these marks an input
+                // and causes a frame; the shell times the gap between them from
+                // inside its own render path.
+                //
+                // Without this the run reports no KeystrokeToPaint at all, which
+                // is honest but useless: the budget that matters most goes
+                // unmeasured on every run.
+                for step in 0..24u32 {
+                    let _ = window.update(cx, |shell, _window, cx| {
+                        match step % 4 {
+                            0 => shell.select_rail(RailTab::Structure),
+                            1 => shell.select_tab((step as usize / 4) % 3),
+                            2 => shell.select_rail(RailTab::Project),
+                            _ => shell.toggle_hud(),
+                        }
+                        cx.notify();
+                    });
+                    cx.background_executor()
+                        .timer(std::time::Duration::from_millis(16))
+                        .await;
+                }
 
                 // Idle behaviour is real: the shell is up and doing nothing, and
                 // this samples what that costs.
