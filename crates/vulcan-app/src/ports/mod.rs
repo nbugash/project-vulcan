@@ -7,3 +7,4 @@ pub mod image_compare;
 pub mod render_capture;
 pub mod token_source;
 pub mod workspace_graph;
+pub mod frame_recorder;

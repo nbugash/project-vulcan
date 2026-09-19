@@ -55,7 +55,8 @@ fn main() {
                 ..Default::default()
             },
             |_, cx| {
-                cx.new(|_| {
+                let recorder = instrument.clone();
+                cx.new(move |_| {
                     let overlay = match std::env::var("VULCAN_OVERLAY").as_deref() {
                         Ok("palette") => Overlay::Palette,
                         Ok("completion") => Overlay::Completion,
@@ -75,7 +76,7 @@ fn main() {
                         Ok("structural") => Mode::Structural,
                         _ => Mode::Files,
                     };
-                    Shell::new(Props {
+                    Shell::measured(Props {
                         overlay,
                         completion_open: std::env::var("VULCAN_COMPLETION").as_deref() != Ok("off"),
                         rail_tab,
@@ -93,15 +94,15 @@ fn main() {
                         side_collapsed: std::env::var("VULCAN_SIDE").as_deref() == Ok("collapsed"),
                         dock_collapsed: std::env::var("VULCAN_DOCK").as_deref() == Ok("collapsed"),
                         ..Props::default()
-                    })
+                    }, recorder)
                 })
             },
         )
         .expect("shell window opens");
         cx.activate(true);
-        // Cold start ends when the window exists, not when the harness finishes
-        // waiting; marking it later would measure this file instead of the shell.
-        instrument.mark_first_frame();
+        // Cold start ends when the shell paints its first frame, which the shell
+        // itself reports through the recorder. Marking it here would measure
+        // this file rather than the product.
 
         if let Some(path) = measure.clone() {
             let instrument = instrument.clone();

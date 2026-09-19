@@ -15,6 +15,12 @@ use gpui::{anchored, deferred, div, px, relative, rgb, rgba, Context, SharedStri
 use crate::fixture;
 use crate::fonts;
 use crate::icons::Icon;
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
+
+use vulcan_app::ports::frame_recorder::{FrameRecorderPort, NotRecording};
+use vulcan_domain::budget::Metric;
+
 use crate::props::{CompletionStyle, DensityProfile, Overlay, PerfReadout, Props, RailTab, ToolSide};
 use vulcan_domain::rendering::Density;
 use crate::palette::{count_label, matching, Mode, Tint};
@@ -40,14 +46,36 @@ pub struct Shell {
     props: Props,
     pub(crate) profile: DensityProfile,
     commands: NoOpCommandSink,
+    /// Where frame and input timings go. `NotRecording` on an ordinary run, so
+    /// the measured path and the run path are the same path.
+    recorder: Arc<dyn FrameRecorderPort>,
+    /// When the most recent input was handled, so the frame that follows it can
+    /// be attributed to it.
+    pending_input: Mutex<Option<Instant>>,
 }
 
 impl Shell {
     pub fn new(props: Props) -> Self {
+        Self::measured(props, Arc::new(NotRecording))
+    }
+
+    /// The same shell, reporting its timings. The composition root decides.
+    pub fn measured(props: Props, recorder: Arc<dyn FrameRecorderPort>) -> Self {
         Self {
             profile: DensityProfile::resolve(props.density),
             props,
             commands: NoOpCommandSink,
+            recorder,
+            pending_input: Mutex::new(None),
+        }
+    }
+
+    /// Called as an input is handled, so the next frame can be measured from it.
+    fn note_input(&self) {
+        if let Ok(mut slot) = self.pending_input.lock() {
+            // Keep the earliest unpainted input: the budget is the wait the user
+            // actually experienced, not the wait since the last of several.
+            slot.get_or_insert_with(Instant::now);
         }
     }
 
@@ -61,6 +89,7 @@ impl Shell {
         self.props.density = density;
         self.profile = DensityProfile::resolve(density);
         self.commands.dispatch("density.set");
+        self.note_input();
     }
 
     pub fn cycle_density(&mut self) {
@@ -80,6 +109,7 @@ impl Shell {
             PerfReadout::Off => PerfReadout::Hud,
         };
         self.commands.dispatch("perf.toggle");
+        self.note_input();
     }
 
     /// Selecting the rail destination that is already showing collapses the
@@ -92,6 +122,7 @@ impl Shell {
             self.props.side_collapsed = false;
         }
         self.commands.dispatch("rail.select");
+        self.note_input();
     }
 
     /// The dock's tab strip behaves the same way: the open panel's tab closes it.
@@ -103,22 +134,26 @@ impl Shell {
             self.props.dock_collapsed = false;
         }
         self.commands.dispatch("dock.panel");
+        self.note_input();
     }
 
     pub fn open_palette(&mut self, mode: Mode) {
         self.props.overlay = Overlay::Palette;
         self.props.palette_mode = mode;
         self.commands.dispatch("palette.open");
+        self.note_input();
     }
 
     pub fn close_overlay(&mut self) {
         self.props.overlay = Overlay::None;
         self.commands.dispatch("overlay.close");
+        self.note_input();
     }
 
     pub fn select_tab(&mut self, index: usize) {
         self.props.active_tab = index;
         self.commands.dispatch("editor.tab");
+        self.note_input();
     }
 
     pub fn toggle_tool_side(&mut self) {
@@ -127,11 +162,13 @@ impl Shell {
             ToolSide::Right => ToolSide::Left,
         };
         self.commands.dispatch("tool.side");
+        self.note_input();
     }
 
     pub fn collapse_tool_window(&mut self, collapsed: bool) {
         self.props.side_collapsed = collapsed;
         self.commands.dispatch("tool.collapse");
+        self.note_input();
     }
 
     pub(crate) fn set_dock_collapsed(&mut self, collapsed: bool) {
@@ -142,6 +179,7 @@ impl Shell {
     pub(crate) fn set_dock_panel(&mut self, index: usize) {
         self.props.dock_panel = index;
         self.commands.dispatch("dock.panel");
+        self.note_input();
     }
 
     pub(crate) fn clickable_panel(
@@ -1084,12 +1122,22 @@ impl Shell {
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // T117. Two figures come out of here, and they are different things.
+        //
+        // The whole of this function is work on the UI thread, so its duration
+        // is what Principle VI calls the longest task on that thread. If an
+        // input is waiting to be painted, the time since it arrived is what the
+        // user experienced as keystroke to paint. Both are recorded from the
+        // path the product actually runs, not from a loop that imitates it.
+        let began = Instant::now();
+        let awaiting_paint = self.pending_input.lock().ok().and_then(|mut slot| slot.take());
+
         let viewport_height: f32 = window.viewport_size().height.into();
         self.commands.dispatch("shell.render");
 
         let side_first = self.props.tool_side == ToolSide::Left;
 
-        div()
+        let tree = div()
             .size_full()
             .flex()
             .flex_col()
@@ -1137,6 +1185,13 @@ impl Render for Shell {
             .when(self.props.perf_readout == PerfReadout::Hud, |shell| {
                 shell.child(self.latency_hud())
             })
-            .when(self.props.overlay == Overlay::Palette, |shell| shell.child(self.palette(cx)))
+            .when(self.props.overlay == Overlay::Palette, |shell| shell.child(self.palette(cx)));
+
+        self.recorder.mark_first_frame();
+        if let Some(arrived) = awaiting_paint {
+            self.recorder.observe(Metric::KeystrokeToPaint, arrived.elapsed());
+        }
+        self.recorder.observe(Metric::LongestUiThreadTask, began.elapsed());
+        tree
     }
 }

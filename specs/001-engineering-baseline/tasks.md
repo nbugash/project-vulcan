@@ -229,12 +229,12 @@ them. A control that appears to act and does nothing is correct here; one that h
       widths the manifest declares
 - [X] T114 [US5] Switch density, tool side and performance readout at runtime rather than only
       at construction
-- [ ] T115 [US2] Inject round-trip latency for the 0, 10, 30 and 80 ms profiles. `round_trip_ms`
+- [X] T115 [US2] Inject round-trip latency for the 0, 10, 30 and 80 ms profiles. `round_trip_ms`
       is recorded in every measurement but nothing applies it, so a completion-popup figure is a
       local measurement wearing a latency label
-- [ ] T116 [US2] Prove the constrained runner constrains: `cpu.max` and `memory.max` applied and
+- [X] T116 [US2] Prove the constrained runner constrains: `cpu.max` and `memory.max` applied and
       observed, not requested. The code has only ever been seen to refuse
-- [ ] T117 [US2] Record real frame timings. `KeystrokeToPaint`, `ScrollTickToPaint`,
+- [X] T117 [US2] Record real frame timings. `KeystrokeToPaint`, `ScrollTickToPaint`,
       `HighlightUpdate` and `LongestUiThreadTask` are emittable but never populated, because
       nothing calls `Instrument::record` from the render or input path. Depends on T112
 

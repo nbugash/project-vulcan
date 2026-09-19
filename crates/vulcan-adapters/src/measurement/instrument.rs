@@ -174,6 +174,24 @@ impl Instrument {
     }
 }
 
+impl vulcan_app::ports::frame_recorder::FrameRecorderPort for Instrument {
+    fn observe(&self, metric: Metric, elapsed: Duration) {
+        let span = match metric {
+            Metric::KeystrokeToPaint => Span::KeystrokeToPaint,
+            Metric::ScrollTickToPaint => Span::ScrollTickToPaint,
+            Metric::LongestUiThreadTask => Span::UiThreadTask,
+            Metric::HighlightUpdate => Span::HighlightUpdate,
+            // Every other budget is measured somewhere other than a frame.
+            _ => return,
+        };
+        self.observe(span, elapsed);
+    }
+
+    fn mark_first_frame(&self) {
+        Instrument::mark_first_frame(self);
+    }
+}
+
 /// Resident set size, read from the kernel rather than estimated.
 fn resident_kb() -> Option<u64> {
     let statm = std::fs::read_to_string("/proc/self/statm").ok()?;

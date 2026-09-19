@@ -39,6 +39,9 @@ impl ConstrainedRunnerPort for AppleSiliconRunner {
             .map_err(|ConstraintError::NotEnforceable(reason)| {
                 MeasurementError::ProductFailedToStart(format!("constraints not enforced: {reason}"))
             })?;
+        // Held for the whole run and removed when it drops, so an interrupted
+        // measurement cannot leave a delay on the device for the next one.
+        let _latency = super::latency::InjectedLatency::apply(round_trip_ms)?;
         super::run_measured(RUNNER, &topology.to_string(), round_trip_ms)
     }
 }
