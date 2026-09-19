@@ -6,7 +6,7 @@
 //! machine without a GPU does not have.
 
 use gpui::{px, size, App, AppContext, Application, Bounds, WindowBounds, WindowOptions};
-use vulcan_adapters::measurement::instrument::Instrument;
+use vulcan_adapters::measurement::instrument::{Instrument, Span};
 use vulcan_domain::budget::Runner;
 use vulcan_ui::palette::Mode;
 use vulcan_ui::props::{CompletionStyle, Overlay, PerfReadout, Props, RailTab};
@@ -135,16 +135,52 @@ fn main() {
                         .await;
                 }
 
-                // Idle behaviour is real: the shell is up and doing nothing,
-                // and this measures the processor time that costs. One window
-                // rather than a hundred short ones, because the reading is
-                // processor time consumed and a short window is mostly noise.
+                // Wait until the shell is actually idle before measuring what
+                // idling costs.
+                //
+                // The input burst above leaves a queue of frames behind it, and
+                // measuring straight afterwards charges that backlog to idle. It
+                // read 15.32% on a run where quiet runs read 1.5%, which is how
+                // this came to be here. Quiescence is a run of frames in which
+                // nothing was drawn, not a fixed delay, because how long the
+                // backlog takes depends on the machine.
+                let mut settled = 0;
+                let mut last = instrument.sample_count(Span::UiThreadTask);
+                for _ in 0..100 {
+                    cx.background_executor()
+                        .timer(std::time::Duration::from_millis(50))
+                        .await;
+                    let now = instrument.sample_count(Span::UiThreadTask);
+                    settled = if now == last { settled + 1 } else { 0 };
+                    last = now;
+                    if settled >= 4 {
+                        break;
+                    }
+                }
+
+                // Idle behaviour is real: the shell is up and doing nothing, and
+                // this measures the processor time that costs.
+                let before_idle = instrument.sample_count(Span::UiThreadTask);
                 let idle = instrument.clone();
                 cx.background_executor()
                     .spawn(async move {
                         idle.observe_idle_over(std::time::Duration::from_secs(2));
                     })
                     .await;
+
+                // If anything drew during the window it was not an idle window,
+                // and the figure describes that work rather than idling. Say so
+                // and report nothing, because a wrong number is worse than none.
+                let drawn = instrument.sample_count(Span::UiThreadTask) - before_idle;
+                if drawn > 0 {
+                    eprintln!("idle window drew {drawn} frames; discarding the idle measurement");
+                    instrument.discard_idle();
+                }
+
+                // The input above must have produced frames, or KeystrokeToPaint
+                // is silently absent and the gate refuses without saying why.
+                let painted = instrument.sample_count(Span::KeystrokeToPaint);
+                eprintln!("measured: {painted} input-to-paint samples, {last} frames in total");
                 instrument.sample_memory();
 
                 let report = instrument.to_json(Runner::LinuxCgroup, "unconstrained", 0);

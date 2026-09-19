@@ -113,6 +113,14 @@ impl Instrument {
         }
     }
 
+    /// Throws away the idle accounting, for when the window turned out not to
+    /// have been idle. The metric is then absent from the report, which is the
+    /// honest outcome: it was not measured.
+    pub fn discard_idle(&self) {
+        self.idle_busy_nanos.store(0, Ordering::Relaxed);
+        self.idle_window_nanos.store(0, Ordering::Relaxed);
+    }
+
     pub fn sample_memory(&self) {
         if let Some(kb) = resident_kb() {
             self.peak_memory_kb.fetch_max(kb, Ordering::Relaxed);
