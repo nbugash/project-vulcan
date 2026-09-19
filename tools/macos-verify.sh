@@ -6,6 +6,19 @@
 #   ./tools/macos-verify.sh            the checks that need no privilege
 #   ./tools/macos-verify.sh --sudo     also the latency profiles, which need it
 #
+# What it needs, all of which it checks before doing any work:
+#
+#   * a Mac with Apple Silicon — an Intel Mac cannot answer the question this
+#     script exists to ask
+#   * Xcode Command Line Tools: `xcode-select --install`. Provides clang for the
+#     `cc` crate, libclang for `bindgen`, and the SDK holding Metal, which is how
+#     GPUI presents on this platform
+#   * rustup, which installs the toolchain rust-toolchain.toml pins by itself
+#   * roughly 10 GB free, most of it the build
+#   * a logged-in desktop session for the check that opens a window; over SSH
+#     there is no window server and that one check fails
+#   * sudo, only with --sudo
+#
 # Written for the bash macOS ships, which is 3.2: no associative arrays, no
 # ${var,,}. Nothing here installs anything or changes any setting that outlives
 # the run.
@@ -83,6 +96,58 @@ echo
 echo "Vulcan — macOS verification"
 echo "  repository: $(pwd)"
 echo "  commit:     $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+echo
+
+# ---- Before doing any work ---------------------------------------------------
+# A missing prerequisite should cost a second, not eight minutes of compiling.
+missing=0
+need() {
+  printf '  %-34s %s\n' "$1" "$2"
+  missing=$((missing + 1))
+}
+
+echo "Prerequisites:"
+
+if [ "$(uname -s)" != "Darwin" ]; then
+  need "macOS" "this is $(uname -s); the checks below only mean something on a Mac"
+elif [ "$(uname -m)" != "arm64" ]; then
+  need "Apple Silicon" "this is $(uname -m); an Intel Mac cannot answer the topology question"
+else
+  printf '  %-34s %s\n' "macOS on Apple Silicon" "$(sw_vers -productVersion), $(uname -m)"
+fi
+
+if [ "$(uname -s)" = "Darwin" ]; then
+  if xcode-select -p >/dev/null 2>&1; then
+    printf '  %-34s %s\n' "Xcode Command Line Tools" "$(xcode-select -p)"
+  else
+    need "Xcode Command Line Tools" "run: xcode-select --install"
+  fi
+fi
+
+if command -v rustup >/dev/null 2>&1; then
+  printf '  %-34s %s\n' "rustup" "$(rustup --version 2>&1 | head -1)"
+elif command -v cargo >/dev/null 2>&1; then
+  printf '  %-34s %s\n' "cargo (no rustup)" "$(cargo --version 2>&1)"
+else
+  need "rustup" "install from https://rustup.rs"
+fi
+
+free_gb=$(df -g . 2>/dev/null | awk 'NR==2 {print $4}')
+if [ -n "${free_gb:-}" ] && [ "$free_gb" -lt 10 ] 2>/dev/null; then
+  need "10 GB free" "${free_gb} GB available; the build alone is most of it"
+else
+  printf '  %-34s %s\n' "disk" "${free_gb:-?} GB free"
+fi
+
+if [ "$WITH_SUDO" -eq 1 ] && ! sudo -n true 2>/dev/null; then
+  printf '  %-34s %s\n' "sudo" "will prompt"
+fi
+
+if [ "$missing" -gt 0 ]; then
+  echo
+  echo "  $missing prerequisite(s) missing; nothing was run."
+  exit 1
+fi
 echo
 
 # ---- 1. The machine ----------------------------------------------------------

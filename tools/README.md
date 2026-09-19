@@ -201,3 +201,48 @@ Every socket is the Wayland compositor's own IPC. The capture attempts no networ
 at all, and the reference it produces is byte-identical to one captured on a networked
 machine. Typefaces and icons are vendored under `mockups/fonts/` and `mockups/icons/` and load
 from the repository.
+
+## Verifying on a Mac
+
+Some things cannot be answered from Linux, and the most important of them is
+whether the budget gate's central claim is true. Gate 5 calls the Apple Silicon
+runner *authoritative* because that hardware reproduces the baseline's
+asymmetric cores — two performance plus four efficiency — and that has never
+been checked on a machine that has any.
+
+```bash
+make macos-verify          # the checks that need no privilege
+make macos-verify-sudo     # also the latency profiles
+```
+
+Nine checks, each writing `reports/macos/verification-<check>-<STATUS>-<run>.json`.
+Every file from one run shares a stamp, so runs accumulate rather than overwrite
+and several runs can be compared.
+
+### What it needs
+
+The script checks all of this before doing any work, because a missing
+prerequisite should cost a second rather than eight minutes of compiling.
+
+| Requirement | Why | If it is missing |
+|---|---|---|
+| A Mac with Apple Silicon | An Intel Mac cannot answer the topology question | The script stops |
+| Xcode Command Line Tools | clang for the `cc` crate, libclang for `bindgen`, and the SDK holding Metal, which is how GPUI presents here | `xcode-select --install` |
+| rustup | Installs the toolchain `rust-toolchain.toml` pins | [rustup.rs](https://rustup.rs) |
+| About 10 GB free | Most of it the build | Free some space |
+| A logged-in desktop session | GPUI needs a window server to open a window | Only the `shell-render` check fails; the rest still run |
+| `sudo` | `dnctl` and `pfctl` need it | Only with `--sudo` |
+
+Running over SSH is fine for eight of the nine checks. The one that opens a
+window will fail, and says so in its own output rather than leaving it to be
+guessed at.
+
+### Sending the results back
+
+```bash
+git add reports/macos && git commit -m 'macOS verification' && git push
+```
+
+`reports/macos/` is deliberately not ignored, unlike the other directories under
+`reports/`: these files are evidence about a machine nobody else can reach, so
+they are the one measurement output worth keeping in the history.
