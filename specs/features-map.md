@@ -49,24 +49,30 @@ by F002.
 
 - [ ] **F000 engineering-baseline**
   - Spec: specs/001-engineering-baseline
-  - [ ] Import-boundary lint rule, failing the build on inward-dependency violations (gate 1)
-  - [ ] Runner constrained to 6 cores and 8 GB, with limits applied rather than requested
-  - [ ] Budget metric collection: cold and warm start, resident memory, idle CPU, longest UI-thread task, input to first paint (gate 5)
-  - [ ] Network profiles injecting 0, 10, 30 and 80ms round trip for latency verification
-  - [ ] Recover and vendor the prototype's font binaries, which are currently absent from `mockups/`
-  - [ ] Design-token extraction script reading the prototype under `mockups/`
-  - [ ] Visual regression baseline and diff reporting against the prototype (gate 8)
-  - [ ] Off-token design value lint rule
-  - [ ] Every region of the prototype rendered, matching it exactly at its viewport
-  - [ ] Every design value in the shell sourced from extracted tokens, none invented
-  - [ ] Prototype extensions recorded and submitted for sign-off where the mock is silent
+  - [x] Import-boundary lint rule, failing the build on inward-dependency violations (gate 1)
+  - [ ] Runner constrained to 6 cores and 8 GB, with limits applied rather than requested.
+        The code applies `cpu.max` and `memory.max` and verifies them by reading back, and
+        refuses when it cannot, but no runner has ever succeeded: the Linux one lacks the
+        privilege and macOS has no cgroups. The authoritative runner is an 11-core, 18 GB
+        M3 Pro, which is explicitly not the baseline
+  - [ ] Budget metric collection: cold and warm start, resident memory, idle CPU, longest
+        UI-thread task, input to first paint. All but warm start are collected and measured
+        on the authoritative runner; there is no WarmStart metric and nothing measures one (gate 5)
+  - [x] Network profiles injecting 0, 10, 30 and 80ms round trip for latency verification
+  - [x] Recover and vendor the prototype's font binaries, which are currently absent from `mockups/`
+  - [x] Design-token extraction script reading the prototype under `mockups/`
+  - [x] Visual regression baseline and diff reporting against the prototype (gate 8)
+  - [x] Off-token design value lint rule
+  - [x] Every region of the prototype rendered, matching it exactly at its viewport
+  - [x] Every design value in the shell sourced from extracted tokens, none invented
+  - [x] Prototype extensions recorded and submitted for sign-off where the mock is silent
   - [x] Sequence gate automation: `featuremap` extension `before_specify` hook (gate 9)
-  - [ ] Shell chrome at the prototype's fixed heights: toolbar, remote banner, rail, tab strip, breadcrumbs, status bar
-  - [ ] Tool windows and dock, with their tab strips, resizable and collapsible
-  - [ ] Editor surface presentation: tabs, gutter, inlay hints, completion popup
-  - [ ] Command palette that opens, filters and closes
-  - [ ] Run configuration and language pack dialogs
-  - [ ] Density, tool side and performance readout props switching at runtime
+  - [x] Shell chrome at the prototype's fixed heights: toolbar, remote banner, rail, tab strip, breadcrumbs, status bar
+  - [x] Tool windows and dock, with their tab strips, resizable and collapsible
+  - [x] Editor surface presentation: tabs, gutter, inlay hints, completion popup
+  - [x] Command palette that opens, filters and closes
+  - [x] Run configuration and language pack dialogs
+  - [x] Density, tool side and performance readout props switching at runtime
 
 ## Tier 1 - Walking skeleton
 
@@ -111,6 +117,8 @@ no, it must be discovered here and not after thirty features assume otherwise.
   - [ ] Keystroke to paint within 8ms p99, never waiting on the network
   - [ ] Undo and redo grouped by typing run rather than by keystroke
   - [ ] Virtualised viewport rendering for large files
+  - [ ] Scroll tick to paint measured against its 8ms p99 budget. Carried from F000, which
+        built the gate but has nothing that scrolls
   - [ ] Caret and selection model
   - [ ] Find and replace within a file
   - [ ] Encoding and line-ending handling
@@ -153,6 +161,8 @@ no, it must be discovered here and not after thirty features assume otherwise.
   - [ ] Full-text search executed by the daemon against its own index
   - [ ] Result ranking and incremental display
   - [ ] Cancellation of in-flight queries
+  - [ ] Fuzzy file open measured against its 50ms budget across 100,000 files, and project
+        text search against its 500ms first-results budget. Carried from F000
 - [ ] **F009 completion-ux** [P] (depends: F006)
   - Spec: not yet specified
   - [ ] Ranking and filtering
@@ -160,6 +170,8 @@ no, it must be discovered here and not after thirty features assume otherwise.
   - [ ] Documentation popups
   - [ ] Snippet insertion and commit characters
   - [ ] Asynchronous rendering that never blocks typing
+  - [ ] Completion popup measured against its 250ms p95 budget at a round trip of 80ms or
+        less. Carried from F000, which has no language server to ask
 - [ ] **F010 diagnostics-and-quickfix** [P] (depends: F006)
   - Spec: not yet specified
   - [ ] Severity model
@@ -167,6 +179,7 @@ no, it must be discovered here and not after thirty features assume otherwise.
   - [ ] Problems panel
   - [ ] Quick fixes and suppression
   - [ ] Debounce tuned against the 300ms to 2s diagnostics budget
+  - [ ] Diagnostics after a typing pause measured against that budget. Carried from F000
 - [ ] **F011 settings-keymaps-themes** [P] (depends: F002)
   - Spec: not yet specified
   - [ ] Settings schema, storage and scoping across application and project

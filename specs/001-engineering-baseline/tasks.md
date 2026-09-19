@@ -231,11 +231,19 @@ them. A control that appears to act and does nothing is correct here; one that h
       budget at 2%: clear of the worst observation of 1.57%, and still failing if what this
       product adds on top of the framework doubles. `tools/idle-probe` is kept so the question
       can be asked again after a framework upgrade
-- [ ] T118 Move the budgets the shell cannot exercise to the features that own them:
-      `CompletionPopup` and `DiagnosticsAfterPause` to the language server feature,
-      `FuzzyFileOpen` to the file finder, `ProjectTextSearch` to search, and
-      `ScrollTickToPaint` to whichever feature makes the editor scroll. Each is unmeasurable
-      until its feature exists, and a budget nothing can measure is a budget nothing enforces
+- [X] T118 Move the budgets the shell cannot exercise to the features that own them. Done
+      2026-09-19: scroll tick to paint to F004 editor-core, fuzzy file open and project text
+      search to F008 global-search, the completion popup to F009 completion-ux, diagnostics
+      after a pause to F010 diagnostics-and-quickfix. Each is recorded as a subfeature of the
+      feature that creates the work it measures, so the budget binds when there is something
+      to measure rather than refusing forever against a shell that cannot exercise it
+- [ ] T120 [US2] Constrain a runner to the baseline's 6 cores and 8 GB. The code applies
+      `cpu.max` and `memory.max` and verifies by reading back, but has never succeeded
+      anywhere: the Linux runner lacks the privilege and macOS has no cgroups. The
+      authoritative runner is an 11-core, 18 GB M3 Pro, so every figure it produces is from a
+      larger machine than the product targets
+- [ ] T121 [US2] Measure warm start. `Metric` declares no `WarmStart` and nothing collects
+      one, so half of the "cold and warm start" subfeature is unmeasured
 - [X] T112 [US5] Make the shell respond to input. It renders every state but handles no event:
       there is no `on_click`, no key binding, and props are fixed at construction, so
       quickstart.md's "Prove it responds" section cannot be performed. Covers the rail, the
