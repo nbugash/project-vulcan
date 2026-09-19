@@ -10,7 +10,6 @@ members = [
     "tools/gate-budget",
     "tools/gate-fidelity",
     "tools/shell-preview",
-    "tools/idle-probe",
 ]
 
 [workspace.package]

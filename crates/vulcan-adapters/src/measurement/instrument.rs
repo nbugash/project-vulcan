@@ -37,8 +37,6 @@ pub struct Instrument {
     started: Instant,
     first_frame: Mutex<Option<Duration>>,
     spans: Mutex<Vec<(Span, Duration)>>,
-    idle_busy_nanos: AtomicU64,
-    idle_window_nanos: AtomicU64,
     peak_memory_kb: AtomicU64,
 }
 
@@ -54,8 +52,6 @@ impl Instrument {
             started: Instant::now(),
             first_frame: Mutex::new(None),
             spans: Mutex::new(Vec::new()),
-            idle_busy_nanos: AtomicU64::new(0),
-            idle_window_nanos: AtomicU64::new(0),
             peak_memory_kb: AtomicU64::new(0),
         }
     }
@@ -84,42 +80,8 @@ impl Instrument {
         self.sample_memory();
     }
 
-    /// Time spent working while the product was otherwise idle, against the
-    /// wall-clock window that work sat in. Both halves of the ratio come from
-    /// the caller: a reporter that assumed a window would silently rescale
-    /// every figure when the sampling period changed.
-    pub fn observe_idle(&self, busy: Duration, window: Duration) {
-        self.idle_busy_nanos
-            .fetch_add(busy.as_nanos() as u64, Ordering::Relaxed);
-        self.idle_window_nanos
-            .fetch_add(window.as_nanos() as u64, Ordering::Relaxed);
-    }
 
-    /// Watches the idle window from inside, using processor time rather than
-    /// timer drift. Returns once the window has elapsed.
-    ///
-    /// The caller used to compute `busy` by subtracting a requested sleep from
-    /// its actual duration, which measures how coarse the platform's timers are.
-    /// On macOS that reported ten percent of a core for a window in which the
-    /// product did nothing.
-    pub fn observe_idle_over(&self, window: Duration) {
-        let before = cpu_time();
-        let started = Instant::now();
-        std::thread::sleep(window);
-        let elapsed = started.elapsed();
 
-        if let (Some(before), Some(after)) = (before, cpu_time()) {
-            self.observe_idle(after.saturating_sub(before), elapsed);
-        }
-    }
-
-    /// Throws away the idle accounting, for when the window turned out not to
-    /// have been idle. The metric is then absent from the report, which is the
-    /// honest outcome: it was not measured.
-    pub fn discard_idle(&self) {
-        self.idle_busy_nanos.store(0, Ordering::Relaxed);
-        self.idle_window_nanos.store(0, Ordering::Relaxed);
-    }
 
     pub fn sample_memory(&self) {
         if let Some(kb) = resident_kb() {
@@ -204,11 +166,6 @@ impl Instrument {
             report.push(measurement(Metric::IdleResidentMemory, peak_mb));
         }
 
-        let window = self.idle_window_nanos.load(Ordering::Relaxed);
-        if window > 0 {
-            let busy = self.idle_busy_nanos.load(Ordering::Relaxed) as f64;
-            report.push(measurement(Metric::IdleCpu, (busy / window as f64) * 100.0));
-        }
 
         report
     }
@@ -296,29 +253,7 @@ fn resident_kb() -> Option<u64> {
     None
 }
 
-/// Processor time this process has consumed, across all its threads.
-///
-/// `getrusage` is a syscall on both platforms this product targets, so reading
-/// it costs nothing that would show up in the reading.
-fn cpu_time() -> Option<Duration> {
-    let mut usage: libc::rusage = unsafe { std::mem::zeroed() };
-    // Safety: the struct is zeroed and sized by the type.
-    if unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut usage) } != 0 {
-        return None;
-    }
-    let seconds = |t: libc::timeval| t.tv_sec as f64 + t.tv_usec as f64 / 1_000_000.0;
-    Some(Duration::from_secs_f64(seconds(usage.ru_utime) + seconds(usage.ru_stime)))
-}
 
-/// `ps` prints processor time as `MM:SS.ss`, or `HH:MM:SS` once it is large.
-/// Retained because the report format is still parsed from text elsewhere.
-pub fn parse_cpu_time(text: &str) -> Option<Duration> {
-    let mut seconds = 0.0;
-    for part in text.split(':') {
-        seconds = seconds * 60.0 + part.parse::<f64>().ok()?;
-    }
-    Some(Duration::from_secs_f64(seconds))
-}
 
 /// Parses a report a measured process wrote, for the runner that collects it.
 pub fn parse_report(text: &str) -> Vec<(String, f64)> {

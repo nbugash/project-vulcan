@@ -55,9 +55,10 @@ by F002.
         refuses when it cannot, but no runner has ever succeeded: the Linux one lacks the
         privilege and macOS has no cgroups. The authoritative runner is an 11-core, 18 GB
         M3 Pro, which is explicitly not the baseline
-  - [ ] Budget metric collection: cold and warm start, resident memory, idle CPU, longest
-        UI-thread task, input to first paint. All but warm start are collected and measured
-        on the authoritative runner; there is no WarmStart metric and nothing measures one (gate 5)
+  - [ ] Budget metric collection: cold and warm start, resident memory, longest UI-thread
+        task, input to first paint. All but warm start are collected and measured on the
+        authoritative runner; there is no WarmStart metric and nothing measures one. Idle
+        processor was removed in constitution v4.2.0 as premature (gate 5)
   - [x] Network profiles injecting 0, 10, 30 and 80ms round trip for latency verification
   - [x] Recover and vendor the prototype's font binaries, which are currently absent from `mockups/`
   - [x] Design-token extraction script reading the prototype under `mockups/`
@@ -443,7 +444,6 @@ architecture document they were taken from has been deleted.
 | Diagnostics after a typing pause | 300ms to 2s, never blocking | Constitution Principle VI |
 | Idle resident memory | 400MB | Constitution Principle VI |
 | Resident memory, typical / peak | 1.5GB / 2.5GB | Leaves at least 5GB for the rest of the machine |
-| Idle CPU, mean over 60s | 1% | Constitution Principle VI |
 
 The client MUST be the authority on buffer contents; echo never waits on the network. The
 250ms figure applies to discrete request-response operations only. At 60 words per minute a

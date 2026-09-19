@@ -17,7 +17,6 @@ pub enum Metric {
     IdleResidentMemory,
     TypicalResidentMemory,
     PeakResidentMemory,
-    IdleCpu,
 }
 
 /// How a run of samples is reduced to the one figure a budget is judged against.
@@ -38,7 +37,7 @@ impl Statistic {
 
 impl Metric {
     /// The thirteen budgets Principle VI defines.
-    pub const ALL: [Metric; 13] = [
+    pub const ALL: [Metric; 12] = [
         Metric::KeystrokeToPaint,
         Metric::ScrollTickToPaint,
         Metric::LongestUiThreadTask,
@@ -51,7 +50,6 @@ impl Metric {
         Metric::IdleResidentMemory,
         Metric::TypicalResidentMemory,
         Metric::PeakResidentMemory,
-        Metric::IdleCpu,
     ];
 
     pub fn budget(self) -> f64 {
@@ -66,17 +64,12 @@ impl Metric {
             Metric::IdleResidentMemory => 400.0,
             Metric::TypicalResidentMemory => 1500.0,
             Metric::PeakResidentMemory => 2500.0,
-            // Constitution v4.1.0. An empty window of the chosen framework
-            // idles at about 1.3%, so this is a property of GPUI rather than of
-            // Vulcan; the margin above it is what this product may add.
-            Metric::IdleCpu => 2.0,
         }
     }
 
     pub fn unit(self) -> &'static str {
         match self {
             Metric::IdleResidentMemory | Metric::TypicalResidentMemory | Metric::PeakResidentMemory => "MB",
-            Metric::IdleCpu => "%",
             _ => "ms",
         }
     }
@@ -138,7 +131,6 @@ impl Metric {
             Metric::IdleResidentMemory => "IdleResidentMemory",
             Metric::TypicalResidentMemory => "TypicalResidentMemory",
             Metric::PeakResidentMemory => "PeakResidentMemory",
-            Metric::IdleCpu => "IdleCpu",
         }
     }
 }

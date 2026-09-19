@@ -127,51 +127,9 @@ fn a_report_round_trips_through_json() {
     assert!((keystroke.1 - 7.1).abs() < 0.01, "value survived: {}", keystroke.1);
 }
 
-#[test]
-fn idle_processor_is_a_ratio_of_observed_windows_not_an_assumed_frame_period() {
-    let instrument = Instrument::new();
-    // Ten windows of 10 ms, 1 ms of work in each: 10% by construction.
-    for _ in 0..10 {
-        instrument.observe_idle(Duration::from_millis(1), Duration::from_millis(10));
-    }
 
-    let idle = measurement(&instrument, Metric::IdleCpu).expect("idle reported");
-    assert!((idle - 10.0).abs() < 0.001, "expected 10%, got {idle}");
-}
 
-#[test]
-fn idle_processor_is_absent_when_nothing_was_sampled() {
-    let instrument = Instrument::new();
-    assert!(measurement(&instrument, Metric::IdleCpu).is_none());
-}
 
-/// The macOS runner reports processor time through `ps`, in its own format.
-#[test]
-fn processor_time_is_read_from_what_ps_prints() {
-    use vulcan_adapters::measurement::instrument::parse_cpu_time;
-
-    assert_eq!(parse_cpu_time("0:01.23"), Some(Duration::from_secs_f64(1.23)));
-    assert_eq!(parse_cpu_time("1:30.00"), Some(Duration::from_secs_f64(90.0)));
-    assert_eq!(parse_cpu_time("1:00:00"), Some(Duration::from_secs_f64(3600.0)));
-    assert_eq!(parse_cpu_time("nonsense"), None);
-}
-
-/// Idle is processor time consumed, not how far a sleep overran.
-///
-/// Timer drift was the earlier implementation, and on macOS it reported ten
-/// percent of a core for a window in which the product did nothing at all.
-#[test]
-fn an_idle_window_consumes_almost_no_processor_time() {
-    let instrument = Instrument::new();
-    instrument.observe_idle_over(Duration::from_millis(250));
-
-    let idle = report(&instrument)
-        .into_iter()
-        .find(|(metric, _)| *metric == Metric::IdleCpu)
-        .expect("idle reported")
-        .1;
-    assert!(idle < 5.0, "a sleeping thread reported {idle}% of a core");
-}
 
 /// A p99 budget is not a maximum, and conflating them makes one hiccup from
 /// another process decide the verdict.

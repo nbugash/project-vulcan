@@ -49,7 +49,7 @@ fn input() -> MeasureBudgetsInput {
 #[test]
 fn a_healthy_run_passes_and_reports_every_metric() {
     let output = MeasureBudgets::new(FakeRunner::healthy(250.0)).execute(input()).unwrap();
-    assert_eq!(output.measurements.len(), 13);
+    assert_eq!(output.measurements.len(), Metric::ALL.len());
     assert_eq!(output.core_topology, "2P+4E");
     assert!(!output.verdict.is_blocking());
 }
@@ -83,10 +83,10 @@ fn unenforceable_constraints_produce_could_not_judge_and_no_measurements() {
 fn a_run_missing_a_metric_refuses_rather_than_reporting_a_partial_set() {
     let mut runner = FakeRunner::healthy(1.0);
     if let Ok(measurements) = &mut runner.measurements {
-        measurements.retain(|m| m.metric != Metric::IdleCpu);
+        measurements.retain(|m| m.metric != Metric::ColdStart);
     }
     match MeasureBudgets::new(runner).execute(input()) {
-        Err(GateError::CouldNotJudge(reason)) => assert!(reason.contains("IdleCpu"), "{reason}"),
+        Err(GateError::CouldNotJudge(reason)) => assert!(reason.contains("ColdStart"), "{reason}"),
         other => panic!("expected CouldNotJudge, got {:?}", other.map(|o| o.verdict)),
     }
 }

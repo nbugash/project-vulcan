@@ -25,20 +25,26 @@ that is visible here rather than hidden inside the number.
 | Peak resident memory | 86.67 MB | 2.5 GB | pass |
 | Typical resident memory | 86.67 MB | 1.5 GB | pass |
 | Idle resident memory | 86.67 MB | 400 MB | pass |
-| Idle processor, mean | 1.57 % | 2 % | pass |
 
 `gate-budget` returns `passed` on the authoritative runner at both the 0 ms and
 10 ms round-trip profiles, with the latency profile applied through `dnctl` and
 read back. Every one of the nine checks passes.
 
-### The idle budget
+### The idle budget, and why it is gone
 
-The 1% the constitution originally carried was set before anything had been
-measured. An empty GPUI window containing one element idles at 1.34%, 1.19% and
-1.10%, which is the same as the whole shell, and the shell draws zero frames
-across an idle window. The floor belongs to the framework's event loop, not to
-anything this product does, so constitution v4.1.0 sets the budget at 2%:
-above the floor, and still failing if what Vulcan adds on top of it doubles.
+It read 1.57% here against a 2% budget. Constitution v4.2.0 removed the budget
+rather than keeping the pass.
+
+The shell draws zero frames while idle, and an empty window of the framework
+costs the same as the whole shell, so the figure was the framework's floor
+rather than anything this product does. More to the point, the product does not
+exist yet: no plugin host, no language server, no indexer, no terminal. Every
+one of those changes the idle profile and several will dominate it.
+
+The measurement was also machine-dependent in a way that mattered. It is
+processor time over wall time, so identical work reads higher on a slower core,
+and this runner is two to four times faster than the baseline. The number would
+have meant something different on the machine the budget describes.
 
 ## What the seven runs cost, and bought
 

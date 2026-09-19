@@ -1,5 +1,39 @@
 <!--
 SYNC IMPACT REPORT
+Version change: 4.1.0 -> 4.2.0
+Bump rationale: MINOR. A Principle VI budget is removed. Code compliant before
+is compliant after; what is required has narrowed.
+
+Removed: idle processor, mean over 60 s.
+
+It was set at 1% before anything had been measured, relaxed to 2% a day later on
+the evidence that an empty window of the chosen framework already costs 1.3%,
+and is now removed, because measuring it at all was premature.
+
+What the shell costs while idle says nothing about what the product will cost.
+There is no plugin host, no language server, no indexer, no file watcher and no
+terminal; every one of those will change the idle profile, and several will
+dominate it. A budget calibrated against a shell that only draws is a budget
+calibrated against a program that will not exist.
+
+The measurement was also not trustworthy on the hardware available. It is
+processor time over wall time, so it rises on a slower core for identical work,
+and the only machine it has run on is two to four times faster than the
+baseline. A budget whose figure depends that strongly on where it is taken
+cannot be enforced until it is taken in the right place.
+
+Reinstate it when the product does enough to have a resource profile worth
+constraining, and calibrate it then on hardware of the baseline's class. The
+other twelve budgets are unaffected: each measures work the product already does
+or will clearly do, and each is a property of the code rather than of the
+machine it was measured on.
+
+Modified principles: VI, one budget removed.
+Added sections: none. Removed sections: none. Deferred items: none.
+-->
+
+<!--
+SYNC IMPACT REPORT
 Version change: 4.0.0 -> 4.1.0
 Bump rationale: MINOR. A Principle VI budget is relaxed. Code compliant at the
 old figure is compliant at the new one, so nothing is invalidated, but what is
@@ -614,7 +648,6 @@ rather than an empty project.
 | Idle resident memory | 400 MB |
 | Resident memory, typical session | 1.5 GB |
 | Resident memory, peak | 2.5 GB |
-| Idle CPU, mean over 60 s | 2%, of which the framework's idle loop is about 1.3% |
 
 The 8 ms figures are one frame at 120Hz: a task that exceeds them drops a frame, which is
 what the product's central claim of being measurably snappier rests on. Cold start excludes
@@ -753,4 +786,4 @@ Compliance is reviewed at three points: at `/speckit-plan`, where the plan recor
 the feature satisfies each principle; at review time, through the gates above; and on
 amendment, when open work is assessed against the new version.
 
-**Version**: 4.1.0 | **Ratified**: 2026-09-18 | **Last Amended**: 2026-09-19
+**Version**: 4.2.0 | **Ratified**: 2026-09-18 | **Last Amended**: 2026-09-19

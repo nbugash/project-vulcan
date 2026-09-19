@@ -44,8 +44,11 @@ fn over_budget_beats_regression_when_both_apply() {
 }
 
 #[test]
-fn the_constitution_defines_thirteen_budgets() {
-    assert_eq!(Metric::ALL.len(), 13);
+fn the_constitution_defines_twelve_budgets() {
+    // Twelve since v4.2.0, which removed the idle processor budget: the shell
+    // is presentation only, so what it costs while idle says nothing about what
+    // the product will cost once there is a product.
+    assert_eq!(Metric::ALL.len(), 12);
     for metric in Metric::ALL {
         assert!(metric.budget() > 0.0, "{} has no budget", metric.name());
     }

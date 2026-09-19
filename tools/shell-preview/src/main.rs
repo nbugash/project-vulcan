@@ -158,24 +158,7 @@ fn main() {
                     }
                 }
 
-                // Idle behaviour is real: the shell is up and doing nothing, and
-                // this measures the processor time that costs.
-                let before_idle = instrument.sample_count(Span::UiThreadTask);
-                let idle = instrument.clone();
-                cx.background_executor()
-                    .spawn(async move {
-                        idle.observe_idle_over(std::time::Duration::from_secs(2));
-                    })
-                    .await;
 
-                // If anything drew during the window it was not an idle window,
-                // and the figure describes that work rather than idling. Say so
-                // and report nothing, because a wrong number is worse than none.
-                let drawn = instrument.sample_count(Span::UiThreadTask) - before_idle;
-                if drawn > 0 {
-                    eprintln!("idle window drew {drawn} frames; discarding the idle measurement");
-                    instrument.discard_idle();
-                }
 
                 // The input above must have produced frames, or KeystrokeToPaint
                 // is silently absent and the gate refuses without saying why.

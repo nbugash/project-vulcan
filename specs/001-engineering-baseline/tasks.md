@@ -224,13 +224,14 @@ them. A control that appears to act and does nothing is correct here; one that h
       18 GB, macOS 26.6.2, rendering through Metal. Six of the seven met; `IdleCpu` measured
       1.5% against a 1.0% budget, so the gate returned a verdict rather than a refusal, which
       is what this task was for. The overage is T119
-- [X] T119 [US2] Investigated 2026-09-19. The shell draws zero frames across an idle window,
-      and an empty GPUI window containing one element idles at 1.34%, 1.19% and 1.10% — the
-      same as the whole shell. The cost is the framework's event loop; the shell adds nothing
-      measurable and no work here would reach 1%. Constitution amended to 4.1.0, setting the
-      budget at 2%: clear of the worst observation of 1.57%, and still failing if what this
-      product adds on top of the framework doubles. `tools/idle-probe` is kept so the question
-      can be asked again after a framework upgrade
+- [X] T119 [US2] Investigated 2026-09-19, and the budget was removed rather than adjusted.
+      The shell draws zero frames while idle, and an empty window of the framework costs the
+      same as the whole shell, so the figure measured GPUI rather than Vulcan. It was also
+      processor time over wall time, which reads higher on a slower core for identical work,
+      and the only hardware available is two to four times faster than the baseline.
+      Constitution v4.2.0 removes it: the shell is presentation only, and what it costs while
+      idle says nothing about a product that has no plugin host, language server, indexer or
+      terminal. Reinstate it when there is a resource profile worth constraining
 - [X] T118 Move the budgets the shell cannot exercise to the features that own them. Done
       2026-09-19: scroll tick to paint to F004 editor-core, fuzzy file open and project text
       search to F008 global-search, the completion popup to F009 completion-ux, diagnostics
