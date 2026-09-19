@@ -20,6 +20,22 @@ pub enum Metric {
     IdleCpu,
 }
 
+/// How a run of samples is reduced to the one figure a budget is judged against.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Statistic {
+    Max,
+    Percentile(f64),
+}
+
+impl Statistic {
+    pub fn describe(self) -> String {
+        match self {
+            Statistic::Max => "max".to_string(),
+            Statistic::Percentile(p) => format!("p{}", p as u32),
+        }
+    }
+}
+
 impl Metric {
     /// The thirteen budgets Principle VI defines.
     pub const ALL: [Metric; 13] = [
@@ -68,6 +84,23 @@ impl Metric {
         matches!(self, Metric::CompletionPopup | Metric::DiagnosticsAfterPause)
     }
 
+    /// Which statistic over a run of samples this budget is stated against.
+    ///
+    /// The constitution is specific and the distinction matters: "8 ms p99" is
+    /// not "no sample above 8 ms". Reporting the maximum for a p99 budget makes
+    /// the verdict hostage to one hiccup from another process, which is what
+    /// two runs on the same Mac minutes apart demonstrated — 3.97 ms and then
+    /// 16.88 ms for the same work.
+    pub fn statistic(self) -> Statistic {
+        match self {
+            // "Longest task on the UI thread" is a maximum by its own wording.
+            Metric::LongestUiThreadTask => Statistic::Max,
+            Metric::CompletionPopup => Statistic::Percentile(95.0),
+            Metric::KeystrokeToPaint | Metric::ScrollTickToPaint => Statistic::Percentile(99.0),
+            _ => Statistic::Max,
+        }
+    }
+
     /// Whether anything in the product can produce this metric yet.
     ///
     /// A budget for work that does not exist cannot be measured, and demanding
@@ -80,6 +113,7 @@ impl Metric {
         !matches!(
             self,
             Metric::ScrollTickToPaint
+                | Metric::HighlightUpdate
                 | Metric::CompletionPopup
                 | Metric::FuzzyFileOpen
                 | Metric::ProjectTextSearch

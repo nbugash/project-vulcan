@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use vulcan_domain::budget::{BudgetMeasurement, Metric, Runner};
+use vulcan_domain::budget::{BudgetMeasurement, Metric, Runner, Statistic};
 
 /// What a recorded span was doing, so it lands against the right budget.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -119,16 +119,47 @@ impl Instrument {
         }
     }
 
-    /// The worst case, not the average. A budget describes the frame a user
-    /// notices, and averaging hides exactly that frame.
-    fn worst(&self, span: Span) -> Option<Duration> {
-        self.spans
+    /// Reduces a run of samples the way the budget is stated.
+    ///
+    /// Never the average: a budget describes the frame a user noticed, and the
+    /// mean hides exactly that frame. But "p99" is not "the worst", either, and
+    /// treating them as the same makes a verdict turn on one hiccup from some
+    /// other process on the machine.
+    fn reduce(&self, span: Span, statistic: Statistic) -> Option<Duration> {
+        let mut samples: Vec<Duration> = self
+            .spans
             .lock()
             .expect("instrument lock")
             .iter()
             .filter(|(kind, _)| *kind == span)
             .map(|(_, elapsed)| *elapsed)
-            .max()
+            .collect();
+        if samples.is_empty() {
+            return None;
+        }
+        samples.sort_unstable();
+
+        Some(match statistic {
+            Statistic::Max => samples[samples.len() - 1],
+            Statistic::Percentile(p) => {
+                // Nearest-rank: the smallest sample at or above the pth
+                // percentile, which for a small run is the last one rather than
+                // an interpolation between samples that were never taken.
+                let rank = ((p / 100.0) * samples.len() as f64).ceil() as usize;
+                samples[rank.clamp(1, samples.len()) - 1]
+            }
+        })
+    }
+
+    /// How many samples a span has, so a report can say whether a percentile
+    /// over them means anything.
+    pub fn sample_count(&self, span: Span) -> usize {
+        self.spans
+            .lock()
+            .expect("instrument lock")
+            .iter()
+            .filter(|(kind, _)| *kind == span)
+            .count()
     }
 
     pub fn report(&self, runner: Runner, core_topology: &str, round_trip_ms: u32) -> Vec<BudgetMeasurement> {
@@ -148,8 +179,9 @@ impl Instrument {
             Span::UiThreadTask,
             Span::HighlightUpdate,
         ] {
-            if let Some(worst) = self.worst(span) {
-                report.push(measurement(span.metric(), worst.as_secs_f64() * 1000.0));
+            let metric = span.metric();
+            if let Some(value) = self.reduce(span, metric.statistic()) {
+                report.push(measurement(metric, value.as_secs_f64() * 1000.0));
             }
         }
 

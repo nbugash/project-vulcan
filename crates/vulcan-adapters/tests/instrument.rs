@@ -172,3 +172,31 @@ fn an_idle_window_consumes_almost_no_processor_time() {
         .1;
     assert!(idle < 5.0, "a sleeping thread reported {idle}% of a core");
 }
+
+/// A p99 budget is not a maximum, and conflating them makes one hiccup from
+/// another process decide the verdict.
+#[test]
+fn a_percentile_budget_ignores_a_single_outlier() {
+    let instrument = Instrument::new();
+    for _ in 0..199 {
+        instrument.observe(Span::KeystrokeToPaint, Duration::from_millis(5));
+    }
+    // One frame lost to something else on the machine.
+    instrument.observe(Span::KeystrokeToPaint, Duration::from_millis(90));
+
+    let measured = measurement(&instrument, Metric::KeystrokeToPaint).expect("measured");
+    assert!(measured < 10.0, "p99 of 200 samples reported {measured}ms; that is the outlier");
+}
+
+#[test]
+fn the_longest_ui_thread_task_is_the_longest_one() {
+    // This budget is a maximum by its own wording, so the outlier is the point.
+    let instrument = Instrument::new();
+    for _ in 0..199 {
+        instrument.observe(Span::UiThreadTask, Duration::from_millis(2));
+    }
+    instrument.observe(Span::UiThreadTask, Duration::from_millis(40));
+
+    let measured = measurement(&instrument, Metric::LongestUiThreadTask).expect("measured");
+    assert!((measured - 40.0).abs() < 0.5, "expected the longest task, got {measured}ms");
+}

@@ -120,7 +120,7 @@ fn main() {
                 // Without this the run reports no KeystrokeToPaint at all, which
                 // is honest but useless: the budget that matters most goes
                 // unmeasured on every run.
-                for step in 0..24u32 {
+                for step in 0..300u32 {
                     let _ = window.update(cx, |shell, _window, cx| {
                         match step % 4 {
                             0 => shell.select_rail(RailTab::Structure),
@@ -131,7 +131,7 @@ fn main() {
                         cx.notify();
                     });
                     cx.background_executor()
-                        .timer(std::time::Duration::from_millis(16))
+                        .timer(std::time::Duration::from_millis(8))
                         .await;
                 }
 
