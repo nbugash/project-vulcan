@@ -4,7 +4,7 @@ Gate 5 calls the Apple Silicon runner authoritative because that hardware
 reproduces the baseline's asymmetric cores. Until 2026-09-19 that had never been
 checked on a machine that has any.
 
-## 2026-09-19 — Apple M3 Pro
+## 2026-09-19 — Apple M3 Pro, all gates pass
 
 | | |
 |---|---|
@@ -19,27 +19,31 @@ that is visible here rather than hidden inside the number.
 
 | Metric | Measured | Budget | |
 |---|---|---|---|
-| Keystroke to paint, p99 | 0.59 ms | 8 ms | pass |
-| Longest UI-thread task | 4.66 ms | 8 ms | pass |
-| Cold start to a rendered file | 109.87 ms | 300 ms | pass |
-| Peak resident memory | 86.34 MB | 2.5 GB | pass |
-| Typical resident memory | 86.34 MB | 1.5 GB | pass |
-| Idle resident memory | 86.34 MB | 400 MB | pass |
-| Idle processor, mean | 1.5 % | 2 % | pass, after the amendment below |
+| Keystroke to paint, p99 | 0.57 ms | 8 ms | pass |
+| Longest UI-thread task | 5.27 ms | 8 ms | pass |
+| Cold start to a rendered file | 95.24 ms | 300 ms | pass |
+| Peak resident memory | 86.67 MB | 2.5 GB | pass |
+| Typical resident memory | 86.67 MB | 1.5 GB | pass |
+| Idle resident memory | 86.67 MB | 400 MB | pass |
+| Idle processor, mean | 1.57 % | 2 % | pass |
 
-The gate returned a verdict rather than a refusal, which is what T102 asked for.
+`gate-budget` returns `passed` on the authoritative runner at both the 0 ms and
+10 ms round-trip profiles, with the latency profile applied through `dnctl` and
+read back. Every one of the nine checks passes.
 
-Idle processor exceeded its 1% budget, and T119 investigated rather than adjusting
-the number. The shell draws **zero frames** across an idle window, and an empty
-GPUI window containing one element idles at 1.34%, 1.19% and 1.10% — the same as
-the whole shell. The cost is the framework's event loop and nothing this product
-does. Constitution v4.1.0 sets the budget to 2% on that evidence: above the
-framework's floor, below anything that would stop the check working.
+### The idle budget
 
-## What the five runs cost, and bought
+The 1% the constitution originally carried was set before anything had been
+measured. An empty GPUI window containing one element idles at 1.34%, 1.19% and
+1.10%, which is the same as the whole shell, and the shell draws zero frames
+across an idle window. The floor belongs to the framework's event loop, not to
+anything this product does, so constitution v4.1.0 sets the budget at 2%:
+above the floor, and still failing if what Vulcan adds on top of it doubles.
 
-Five runs on this machine found five defects that no Linux run could have, and
-four of them were in the measurement rather than the product:
+## What the seven runs cost, and bought
+
+Seven runs on this machine found six defects that no Linux run could have, and
+five of them were in the measurement rather than the product:
 
 1. Memory was never measured on macOS: the reader was `/proc/self/statm`.
 2. Idle processor time was inferred from how far a sleep overran, which measures
@@ -53,6 +57,10 @@ four of them were in the measurement rather than the product:
 5. The latency profile was applied and then refused, because `dnctl` prints a
    delay as `10 ms` and the parser expected `40ms`.
 
-Only the last was a straightforward bug. The others were measurements that
+6. The idle window began the instant a three hundred input burst ended, so the
+   frames still queued behind it drained inside the window and were charged to
+   idling. One run read 15.32% where quiet runs read 1.5%.
+
+Only the fifth was a straightforward bug. The others were measurements that
 looked plausible and were not, which is the failure mode this gate exists to
 prevent and was itself committing.
