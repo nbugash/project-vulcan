@@ -129,7 +129,11 @@ if [ "$(uname -s)" = "Darwin" ]; then
   if xcrun -f metal >/dev/null 2>&1; then
     printf '  %-34s %s\n' "metal shader compiler" "$(xcrun -f metal)"
   else
-    need "metal shader compiler" "install Xcode, then: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer && xcodebuild -runFirstLaunch"
+    need "metal shader compiler" "not present; the Command Line Tools do not include it"
+    printf '  %-34s %s\n' "" "install Xcode, then:"
+    printf '  %-34s %s\n' "" "  sudo xcode-select -s /Applications/Xcode.app/Contents/Developer"
+    printf '  %-34s %s\n' "" "  xcodebuild -runFirstLaunch"
+    printf '  %-34s %s\n' "" "  xcodebuild -downloadComponent metalToolchain   (Xcode 26)"
   fi
 fi
 

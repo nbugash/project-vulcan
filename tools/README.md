@@ -240,7 +240,7 @@ prerequisite should cost a second rather than eight minutes of compiling.
 |---|---|---|
 | A Mac with Apple Silicon | An Intel Mac cannot answer the topology question | The script stops |
 | Xcode Command Line Tools | clang for the `cc` crate, libclang for `bindgen` | `xcode-select --install` |
-| **Full Xcode** | GPUI compiles its Metal shaders during the build, and the `metal` compiler is not in the Command Line Tools | Install Xcode, then `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer` |
+| **Full Xcode** | GPUI compiles its Metal shaders during the build, and the `metal` compiler is not in the Command Line Tools | See below |
 | rustup | Installs the toolchain `rust-toolchain.toml` pins | [rustup.rs](https://rustup.rs) |
 | About 10 GB free | Most of it the build | Free some space |
 | A logged-in desktop session | GPUI needs a window server to open a window | Only the `shell-render` check fails; the rest still run |
@@ -249,6 +249,24 @@ prerequisite should cost a second rather than eight minutes of compiling.
 Running over SSH is fine for eight of the nine checks. The one that opens a
 window will fail, and says so in its own output rather than leaving it to be
 guessed at.
+
+### The Metal compiler
+
+The Command Line Tools are not enough, whatever else they provide. GPUI compiles
+its shaders in a build script, and `metal` ships only with Xcode. On Xcode 26 it
+is a separate download even then.
+
+```bash
+# 1. Install Xcode from the App Store
+sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+xcodebuild -runFirstLaunch
+xcodebuild -downloadComponent metalToolchain    # Xcode 26 and later
+
+xcrun -f metal      # should print a path
+```
+
+`make setup` checks exactly this, so the answer costs a second rather than a
+failed build.
 
 ### Sending the results back
 

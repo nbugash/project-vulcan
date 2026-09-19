@@ -56,10 +56,14 @@ if [ "$PLATFORM" = "Darwin" ]; then
   if xcrun -f metal >/dev/null 2>&1; then
     ok "metal compiler" "$(xcrun -f metal)"
   else
-    gap "metal compiler" "install Xcode from the App Store, then:"
-    note "sudo xcode-select -s /Applications/Xcode.app/Contents/Developer"
-    note "xcodebuild -runFirstLaunch"
-    note "the Command Line Tools alone do not include it"
+    gap "metal compiler" "GPUI compiles Metal shaders; this is required"
+    note "1. Install Xcode from the App Store. The Command Line Tools do not"
+    note "   include the metal compiler, whatever else they provide."
+    note "2. sudo xcode-select -s /Applications/Xcode.app/Contents/Developer"
+    note "3. xcodebuild -runFirstLaunch"
+    note "4. On Xcode 26 the Metal toolchain is a separate download:"
+    note "   xcodebuild -downloadComponent metalToolchain"
+    note "Then: xcrun -f metal   should print a path."
   fi
 
   # dnctl and pfctl ship with macOS; note them so the list is complete.
