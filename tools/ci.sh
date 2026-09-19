@@ -115,7 +115,20 @@ run_ci() {
     note "working tree is dirty; CI runs what is pushed, not what is on disk"
   fi
 
-  gh workflow run "$WORKFLOW" --ref "$branch"
+  # A dispatch that does not happen must stop here. Falling through would find
+  # the newest run for the branch, which is some earlier push's, and report its
+  # verdict as though it were this one's.
+  local before
+  before=$(gh run list --workflow "$WORKFLOW" --branch "$branch" --limit 1 \
+             --json databaseId -q '.[0].databaseId' 2>/dev/null || true)
+
+  if ! gh workflow run "$WORKFLOW" --ref "$branch"; then
+    die "could not dispatch $WORKFLOW.
+       workflow_dispatch is only offered when the workflow file exists on the
+       repository's DEFAULT branch. This repository's default is '$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)',
+       and the workflow is on '$branch'. Merge it to the default branch, or
+       change the default, or let a push trigger the run instead."
+  fi
 
   # `gh workflow run` returns before the run is queued, so wait for an id
   # rather than racing it.
@@ -123,7 +136,9 @@ run_ci() {
   for _ in $(seq 1 30); do
     sleep 2
     id=$(gh run list --workflow "$WORKFLOW" --branch "$branch" --limit 1 --json databaseId -q '.[0].databaseId' 2>/dev/null || true)
-    [ -n "$id" ] && break
+    # Only a run that did not exist before the dispatch is this one's.
+    [ -n "$id" ] && [ "$id" != "$before" ] && break
+    id=""
   done
   [ -n "$id" ] || die "the run did not appear; check: gh run list --workflow $WORKFLOW"
 
@@ -136,7 +151,14 @@ run_ci() {
     ".jobs[] | select(.name==\"$MACOS_JOB\") | .databaseId")" 2>/dev/null \
     | sed -n '/Observed machine/,/Gate 5/p' || note "could not read the job log; open: $(gh run view "$id" --json url -q .url)"
 
-  gh run view "$id" --json conclusion,url -q '"\nconclusion: \(.conclusion)\nurl: \(.url)"'
+  local conclusion
+  conclusion=$(gh run view "$id" --json conclusion -q .conclusion)
+  printf "\nconclusion: %s\nurl: %s\n" "$conclusion" \
+    "$(gh run view "$id" --json url -q .url)"
+
+  # The caller decides what to do about a failure, but it must be told there was
+  # one; reporting 0 for a failed run is worse than not running at all.
+  [ "$conclusion" = "success" ]
 }
 
 # Where the intended visibility is recorded before anything changes. Inside
@@ -155,7 +177,13 @@ restore_visibility() {
   local code=$?
   trap - EXIT INT TERM HUP
 
-  # Stop watching before restoring; the run continues on GitHub either way.
+  # Nothing here may abort the handler. `set -e` applies inside a trap too, so a
+  # single failing command — `kill` on an already-dead process, say — would end
+  # the restore before it started. That exact bug left the repository public
+  # once; every step below is therefore unconditional.
+  set +e
+
+  # Stop watching, if it is still going. The run continues on GitHub either way.
   [ -n "${ci_pid:-}" ] && kill "$ci_pid" 2>/dev/null
 
   [ -f "$STAMP" ] || exit "$code"

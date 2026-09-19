@@ -41,3 +41,4 @@ echo "and it is masked in workflow logs."
 echo
 echo "Check it can do what the restore job needs, while you still have it to hand:"
 echo "  make check-visibility-token"
+ 
