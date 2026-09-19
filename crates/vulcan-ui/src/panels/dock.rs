@@ -15,7 +15,7 @@ impl Shell {
     /// composes it. Capped so the editor always keeps room.
     pub(crate) fn dock(&self, viewport_height: f32, cx: &mut Context<Self>) -> impl IntoElement {
         div()
-            .h(px(self.profile.dock_height_for(viewport_height)))
+            .h(px(self.dock_height_for(viewport_height)))
             .w_full()
             .flex()
             .flex_col()

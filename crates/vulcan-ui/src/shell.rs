@@ -42,6 +42,16 @@ impl NoOpCommandSink {
     pub fn dispatch(&self, _command: &'static str) {}
 }
 
+/// The thing a resize drag carries, which is nothing: the gesture moves an
+/// edge rather than transporting anything.
+struct DragHandle;
+
+impl Render for DragHandle {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+    }
+}
+
 pub struct Shell {
     props: Props,
     pub(crate) profile: DensityProfile,
@@ -81,6 +91,92 @@ impl Shell {
 
     pub fn props(&self) -> &Props {
         &self.props
+    }
+
+    /// The tool window's width: what a drag left, or what the density says.
+    pub fn tool_window_width(&self) -> f32 {
+        self.props.tool_window_width.unwrap_or(self.profile.tool_window_width)
+    }
+
+    pub fn dock_height(&self) -> f32 {
+        self.props.dock_height.unwrap_or(self.profile.dock_height)
+    }
+
+    /// The dock's height, still capped so the editor keeps its share of the
+    /// window however far the edge was dragged.
+    pub fn dock_height_for(&self, viewport_height: f32) -> f32 {
+        self.dock_height().min(viewport_height * 0.34)
+    }
+
+    /// Puts the tool window's edge at an absolute position, which is where the
+    /// pointer is rather than how far it has travelled.
+    ///
+    /// Following the pointer directly means a drag cannot drift: accumulating
+    /// deltas loses a pixel wherever one is dropped, and the edge ends up
+    /// somewhere the pointer is not.
+    pub fn place_tool_window_edge(&mut self, at: f32) {
+        let width = at - Chrome::rail_width();
+        self.resize_tool_window(width - self.tool_window_width());
+    }
+
+    /// The dock grows upward, so its height is the distance from the pointer to
+    /// the bottom of the window.
+    pub fn place_dock_edge(&mut self, at: f32, viewport_height: f32) {
+        let height = viewport_height - Chrome::status_bar() - at;
+        self.resize_dock(height - self.dock_height());
+    }
+
+    /// A draggable edge. Four pixels, which is the divider width the prototype
+    /// uses, and a cursor that says which way it moves before anyone commits to
+    /// finding out.
+    fn resize_handle(
+        id: &'static str,
+        vertical: bool,
+        cx: &mut Context<Self>,
+        place: impl Fn(&mut Self, f32) + 'static,
+    ) -> impl IntoElement {
+        div()
+            .id(id)
+            .when(vertical, |handle| handle.w(px(4.0)).h_full().cursor_col_resize())
+            .when(!vertical, |handle| handle.h(px(4.0)).w_full().cursor_row_resize())
+            .bg(rgb(Palette::divider()))
+            // The payload is unit: what is being dragged is the edge itself, and
+            // nothing is being carried anywhere.
+            .on_drag((), |_, _, _, cx| cx.new(|_| DragHandle))
+            .on_drag_move(cx.listener(
+                move |shell, event: &gpui::DragMoveEvent<()>, _window, cx| {
+                    let at: f32 = if vertical {
+                        event.event.position.x.into()
+                    } else {
+                        event.event.position.y.into()
+                    };
+                    place(shell, at);
+                    cx.notify();
+                },
+            ))
+    }
+
+    /// Moves the tool window's edge, bounded by the widths the prototype states.
+    ///
+    /// The manifest gives three widths per surface, one per density, and those
+    /// are the only widths it sanctions. A drag may land anywhere between the
+    /// narrowest and the widest; beyond them it stops, because a width the
+    /// prototype never states is a design value this product invented.
+    pub fn resize_tool_window(&mut self, delta: f32) {
+        let narrowest = crate::tokens::px_of(crate::generated_tokens::VK_TOOL_COMPACT);
+        let widest = crate::tokens::px_of(crate::generated_tokens::VK_TOOL_ROOMY);
+        self.props.tool_window_width =
+            Some((self.tool_window_width() + delta).clamp(narrowest, widest));
+        self.commands.dispatch("tool.resize");
+        self.note_input();
+    }
+
+    pub fn resize_dock(&mut self, delta: f32) {
+        let shortest = crate::tokens::px_of(crate::generated_tokens::VK_DOCK_COMPACT);
+        let tallest = crate::tokens::px_of(crate::generated_tokens::VK_DOCK_ROOMY);
+        self.props.dock_height = Some((self.dock_height() + delta).clamp(shortest, tallest));
+        self.commands.dispatch("dock.resize");
+        self.note_input();
     }
 
     /// Density drives every dimension in the profile, so changing it has to
@@ -491,7 +587,7 @@ impl Shell {
     /// Tool window: width follows density.
     fn tool_window(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
-            .w(px(self.profile.tool_window_width))
+            .w(px(self.tool_window_width()))
             .h_full()
             .flex()
             .flex_col()
@@ -1154,7 +1250,12 @@ impl Render for Shell {
                     .flex()
                     .when(side_first, |row| {
                         row.child(self.rail(cx)).when(!self.props.side_collapsed, |row| {
-                            row.child(self.tool_window(cx))
+                            row.child(self.tool_window(cx)).child(Self::resize_handle(
+                                "tool-edge",
+                                true,
+                                cx,
+                                |shell, at| shell.place_tool_window_edge(at),
+                            ))
                         })
                     })
                     .child(
@@ -1170,15 +1271,27 @@ impl Render for Shell {
                                 column.child(self.editor(cx))
                             })
                             .when(!self.props.dock_collapsed, |column| {
-                                column.child(self.dock(viewport_height, cx))
+                                column
+                                    .child(Self::resize_handle(
+                                        "dock-edge",
+                                        false,
+                                        cx,
+                                        move |shell, at| shell.place_dock_edge(at, viewport_height),
+                                    ))
+                                    .child(self.dock(viewport_height, cx))
                             })
                             .when(self.props.dock_collapsed, |column| {
                                 column.child(self.collapsed_dock(cx))
                             }),
                     )
                     .when(!side_first, |row| {
-                        row.when(!self.props.side_collapsed, |row| row.child(self.tool_window(cx)))
-                            .child(self.rail(cx))
+                        row.when(!self.props.side_collapsed, |row| {
+                            row.child(Self::resize_handle("tool-edge", true, cx, |shell, at| {
+                                shell.place_tool_window_edge(at)
+                            }))
+                            .child(self.tool_window(cx))
+                        })
+                        .child(self.rail(cx))
                     }),
             )
             .child(self.status_bar(cx))

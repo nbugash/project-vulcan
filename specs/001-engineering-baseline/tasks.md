@@ -241,8 +241,11 @@ them. A control that appears to act and does nothing is correct here; one that h
       quickstart.md's "Prove it responds" section cannot be performed. Covers the rail, the
       collapse controls, editor tabs, the palette opening, filtering and closing, and the run
       configuration dropdown
-- [ ] T113 [US5] Make the tool window and dock resizable by dragging their edge, within the
-      widths the manifest declares
+- [X] T113 [US5] Make the tool window and dock resizable by dragging their edge, within the
+      widths the manifest declares. Bounded by the three widths per surface the prototype
+      states — 250/276/310 for the tool window, 206/236/268 for the dock — because a width it
+      never states is one this product invented. Eight tests; the drag gesture itself is
+      unverifiable headlessly, as with every other input
 - [X] T114 [US5] Switch density, tool side and performance readout at runtime rather than only
       at construction
 - [X] T115 [US2] Inject round-trip latency for the 0, 10, 30 and 80 ms profiles. `round_trip_ms`

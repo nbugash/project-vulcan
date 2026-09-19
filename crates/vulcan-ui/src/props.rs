@@ -62,6 +62,10 @@ pub struct Props {
     pub active_tab: usize,
     /// Which dock panel is in front: terminal, debug, problems, resources.
     pub dock_panel: usize,
+    /// Set by dragging an edge. `None` means the density profile decides, which
+    /// is the state until someone drags something.
+    pub tool_window_width: Option<f32>,
+    pub dock_height: Option<f32>,
 }
 
 impl Default for Props {
@@ -82,6 +86,8 @@ impl Default for Props {
             completion_open: true,
             active_tab: 0,
             dock_panel: 0,
+            tool_window_width: None,
+            dock_height: None,
         }
     }
 }
