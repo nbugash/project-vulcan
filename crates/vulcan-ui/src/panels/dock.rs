@@ -5,13 +5,15 @@ use gpui::prelude::*;
 use gpui::{div, px, rgb, IntoElement};
 
 use crate::icons::Icon;
+use gpui::Context;
+
 use crate::shell::Shell;
 use crate::tokens::{Chrome, Palette};
 
 impl Shell {
     /// Dock: content first, tab strip along the bottom edge as the prototype
     /// composes it. Capped so the editor always keeps room.
-    pub(crate) fn dock(&self, viewport_height: f32) -> impl IntoElement {
+    pub(crate) fn dock(&self, viewport_height: f32, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .h(px(self.profile.dock_height_for(viewport_height)))
             .w_full()
@@ -55,7 +57,8 @@ impl Shell {
                     .bg(rgb(Palette::surface()))
                     .children(crate::fixture::dock_tabs().into_iter().enumerate().map(
                         |(index, (glyph, label, badge))| {
-                            Self::dock_tab(glyph, label, badge, index == 0 && true)
+                            let active = index == self.props().dock_panel;
+                            Self::dock_tab_button(index, glyph, label, badge, active, cx)
                         },
                     ))
                     .child(div().flex_1())
@@ -73,6 +76,22 @@ impl Shell {
     /// The selected tab is filled and its label goes to full-strength text, as
     /// the prototype computes it: `bg` becomes neutral-900 and `color` becomes
     /// `--color-text` while the dock is open on that tab.
+    fn dock_tab_button(
+        index: usize,
+        glyph: &'static str,
+        label: &str,
+        badge: &str,
+        active: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        Self::clickable_panel(
+            gpui::SharedString::from(format!("dock-{index}")),
+            cx,
+            move |shell, _| shell.select_dock_panel(index),
+        )
+        .child(Self::dock_tab(glyph, label, badge, active))
+    }
+
     fn dock_tab(glyph: &'static str, label: &str, badge: &str, active: bool) -> impl IntoElement {
         div()
             .h_full()
@@ -105,7 +124,7 @@ impl Shell {
 
     /// Collapsed dock: the tab strip remains so the panels stay reachable, and
     /// no tab is highlighted because none is showing.
-    pub(crate) fn collapsed_dock(&self) -> impl IntoElement {
+    pub(crate) fn collapsed_dock(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .h(px(Chrome::dock_tab_strip()))
             .w_full()
@@ -113,9 +132,11 @@ impl Shell {
             .items_center()
             .pr(px(12.0))
             .bg(rgb(Palette::surface()))
-            .children(crate::fixture::dock_tabs().into_iter().map(|(glyph, label, badge)| {
-                Self::dock_tab(glyph, label, badge, false)
-            }))
+            .children(crate::fixture::dock_tabs().into_iter().enumerate().map(
+                |(index, (glyph, label, badge))| {
+                    Self::dock_tab_button(index, glyph, label, badge, false, cx)
+                },
+            ))
             .child(div().flex_1())
             .child(
                 div()

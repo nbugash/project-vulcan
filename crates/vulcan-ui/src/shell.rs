@@ -16,6 +16,7 @@ use crate::fixture;
 use crate::fonts;
 use crate::icons::Icon;
 use crate::props::{CompletionStyle, DensityProfile, Overlay, PerfReadout, Props, RailTab, ToolSide};
+use vulcan_domain::rendering::Density;
 use crate::palette::{count_label, matching, Mode, Tint};
 use crate::tokens::{rgb_of, Chrome, Palette};
 
@@ -52,6 +53,103 @@ impl Shell {
 
     pub fn props(&self) -> &Props {
         &self.props
+    }
+
+    /// Density drives every dimension in the profile, so changing it has to
+    /// re-resolve the profile rather than only record the choice.
+    pub fn set_density(&mut self, density: Density) {
+        self.props.density = density;
+        self.profile = DensityProfile::resolve(density);
+        self.commands.dispatch("density.set");
+    }
+
+    pub fn cycle_density(&mut self) {
+        self.set_density(match self.props.density {
+            Density::Compact => Density::Default,
+            Density::Default => Density::Roomy,
+            Density::Roomy => Density::Compact,
+        });
+    }
+
+    /// `toggleHud` in the prototype: the status bar's latency readout is the
+    /// control that shows and hides the frame-timing panel.
+    pub fn toggle_hud(&mut self) {
+        self.props.perf_readout = match self.props.perf_readout {
+            PerfReadout::Hud => PerfReadout::Status,
+            PerfReadout::Status => PerfReadout::Hud,
+            PerfReadout::Off => PerfReadout::Hud,
+        };
+        self.commands.dispatch("perf.toggle");
+    }
+
+    /// Selecting the rail destination that is already showing collapses the
+    /// tool window, which is how the prototype's rail behaves.
+    pub fn select_rail(&mut self, tab: RailTab) {
+        if self.props.rail_tab == tab && !self.props.side_collapsed {
+            self.props.side_collapsed = true;
+        } else {
+            self.props.rail_tab = tab;
+            self.props.side_collapsed = false;
+        }
+        self.commands.dispatch("rail.select");
+    }
+
+    /// The dock's tab strip behaves the same way: the open panel's tab closes it.
+    pub fn select_dock_panel(&mut self, index: usize) {
+        if self.props.dock_panel == index && !self.props.dock_collapsed {
+            self.props.dock_collapsed = true;
+        } else {
+            self.props.dock_panel = index;
+            self.props.dock_collapsed = false;
+        }
+        self.commands.dispatch("dock.panel");
+    }
+
+    pub fn open_palette(&mut self, mode: Mode) {
+        self.props.overlay = Overlay::Palette;
+        self.props.palette_mode = mode;
+        self.commands.dispatch("palette.open");
+    }
+
+    pub fn close_overlay(&mut self) {
+        self.props.overlay = Overlay::None;
+        self.commands.dispatch("overlay.close");
+    }
+
+    pub fn select_tab(&mut self, index: usize) {
+        self.props.active_tab = index;
+        self.commands.dispatch("editor.tab");
+    }
+
+    pub fn toggle_tool_side(&mut self) {
+        self.props.tool_side = match self.props.tool_side {
+            ToolSide::Left => ToolSide::Right,
+            ToolSide::Right => ToolSide::Left,
+        };
+        self.commands.dispatch("tool.side");
+    }
+
+    pub fn collapse_tool_window(&mut self, collapsed: bool) {
+        self.props.side_collapsed = collapsed;
+        self.commands.dispatch("tool.collapse");
+    }
+
+    pub(crate) fn set_dock_collapsed(&mut self, collapsed: bool) {
+        self.props.dock_collapsed = collapsed;
+        self.commands.dispatch("dock.collapse");
+    }
+
+    pub(crate) fn set_dock_panel(&mut self, index: usize) {
+        self.props.dock_panel = index;
+        self.commands.dispatch("dock.panel");
+    }
+
+    pub(crate) fn clickable_panel(
+        id: impl Into<SharedString>,
+        cx: &mut Context<Self>,
+        action: impl Fn(&mut Self, &mut Context<Self>) + 'static,
+    ) -> gpui::Stateful<gpui::Div> {
+        Self::clickable(id, cx, action)
     }
 
     pub fn profile(&self) -> &DensityProfile {
@@ -94,7 +192,7 @@ impl Shell {
     }
 
     /// Toolbar: 46px, on the surface colour, with the wordmark and run controls.
-    fn toolbar(&self) -> impl IntoElement {
+    fn toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .h(px(Chrome::toolbar()))
             .w_full()
@@ -136,7 +234,9 @@ impl Shell {
             // Equal spacers either side centre the search box in the toolbar.
             .child(div().flex_1())
             .child(
-                div()
+                Self::clickable("search-everywhere", cx, |shell, _| {
+                    shell.open_palette(Mode::Files)
+                })
                     .flex_1()
                     .max_w(px(400.0))
                     .flex()
@@ -155,7 +255,10 @@ impl Shell {
             .child(div().flex_1())
             .child(Self::pill(Icon::CROSSHAIR, "Spec pins"))
             .child(Self::pill(Icon::DESKTOP, "Local"))
-            .child(Self::icon(Icon::SLIDERS_HORIZONTAL, 15.0, Palette::muted()))
+            .child(
+                Self::clickable("density", cx, |shell, _| shell.cycle_density())
+                    .child(Self::icon(Icon::SLIDERS_HORIZONTAL, 15.0, Palette::muted())),
+            )
     }
 
     /// A5: a toolbar control the prototype labels rather than leaving as a bare
@@ -230,7 +333,7 @@ impl Shell {
     }
 
     /// Rail: 44px wide, the tool window switcher.
-    fn rail(&self) -> impl IntoElement {
+    fn rail(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .w(px(Chrome::rail_width()))
             .h_full()
@@ -243,12 +346,20 @@ impl Shell {
             .children(Self::rail_items().into_iter().map(|(tab, glyph)| {
                 let active = tab == self.props.rail_tab;
                 div()
+                    .id(SharedString::from(format!("rail-{tab:?}")))
                     .size(px(28.0))
                     .flex()
                     .items_center()
                     .justify_center()
                     .rounded(px(4.0))
+                    .cursor_pointer()
                     .when(active, |item| item.bg(rgb(Palette::panel())))
+                    // Selecting a rail destination that is already selected
+                    // collapses the tool window, as the prototype does.
+                    .on_click(cx.listener(move |shell, _event, _window, cx| {
+                        shell.select_rail(tab);
+                        cx.notify();
+                    }))
                     .child(Self::icon(
                         glyph,
                         17.0,
@@ -340,7 +451,7 @@ impl Shell {
 
 
     /// Tool window: width follows density.
-    fn tool_window(&self) -> impl IntoElement {
+    fn tool_window(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .w(px(self.profile.tool_window_width))
             .h_full()
@@ -362,8 +473,16 @@ impl Shell {
                     .when(Self::tool_panel(self.props.rail_tab) == RailTab::Project, |header| {
                         header.child(Self::label(fixture::FILE_COUNT, 10.5, Palette::dim()))
                     })
-                    .child(Self::icon(Icon::CARET_DOUBLE_LEFT, 12.0, Palette::dim()))
-                    .child(Self::icon(Icon::SIDEBAR_SIMPLE, 12.0, Palette::dim())),
+                    .child(
+                        Self::clickable("tool-collapse", cx, |shell, _| {
+                            shell.collapse_tool_window(true)
+                        })
+                        .child(Self::icon(Icon::CARET_DOUBLE_LEFT, 12.0, Palette::dim())),
+                    )
+                    .child(
+                        Self::clickable("tool-side", cx, |shell, _| shell.toggle_tool_side())
+                        .child(Self::icon(Icon::SIDEBAR_SIMPLE, 12.0, Palette::dim())),
+                    ),
             )
             .children(Self::panel_rows(Self::tool_panel(self.props.rail_tab)).into_iter().map(|row| {
                 let (depth, glyph, name, selected, status) = row;
@@ -420,7 +539,7 @@ impl Shell {
     }
 
     /// Editor: tab strip, breadcrumbs, then the buffer surface.
-    fn editor(&self) -> impl IntoElement {
+    fn editor(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .relative()
             .flex_1()
@@ -436,8 +555,10 @@ impl Shell {
                     .gap(px(1.0))
                     .bg(rgb(Palette::surface()))
                     .children(fixture::tabs().into_iter().enumerate().map(|(index, tab)| {
-                        let active = index == 0;
-                        div()
+                        let active = index == self.props.active_tab;
+                        Self::clickable(SharedString::from(format!("tab-{index}")), cx, move |shell, _| {
+                            shell.select_tab(index)
+                        })
                             .h_full()
                             .flex()
                             .items_center()
@@ -586,7 +707,7 @@ impl Shell {
 
 
     /// Status bar: 26px, with the performance readout when the property asks.
-    fn status_bar(&self) -> impl IntoElement {
+    fn status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .h(px(Chrome::status_bar()))
             .w_full()
@@ -619,8 +740,14 @@ impl Shell {
                     .child(Self::label(&format!("{name} {size}"), 10.5, Palette::muted()))
             }))
             .when(self.props.perf_readout != PerfReadout::Off, |bar| {
-                bar.child(Self::icon(Icon::GAUGE, 12.0, Palette::dim()))
-                    .child(Self::code(fixture::STATUS_LATENCY, 10.5, Palette::accent()))
+                bar.child(
+                    Self::clickable("perf-readout", cx, |shell, _| shell.toggle_hud())
+                        .flex()
+                        .items_center()
+                        .gap(px(6.0))
+                        .child(Self::icon(Icon::GAUGE, 12.0, Palette::dim()))
+                        .child(Self::code(fixture::STATUS_LATENCY, 10.5, Palette::accent())),
+                )
             })
             .child(Self::code(fixture::CARET, 10.5, Palette::muted()))
             .children(
@@ -670,7 +797,7 @@ impl Shell {
 
     /// Correction 7: the modal has four parts — title with its source and
     /// timing, a search input, the result list, and a footer of key hints.
-    fn palette(&self) -> impl IntoElement {
+    fn palette(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let all = self.props.palette_mode.rows();
         let shown = matching(all.clone(), &self.props.palette_query);
 
@@ -702,9 +829,13 @@ impl Shell {
                             .children(
                                 [Mode::Files, Mode::Commands, Mode::Structural]
                                     .into_iter()
-                                    .map(|mode| (mode.glyph(), mode.label(), mode == self.props.palette_mode))
-                                .map(|(glyph, name, active)| {
-                                    div()
+                                    .map(|mode| (mode, mode.glyph(), mode.label(), mode == self.props.palette_mode))
+                                .map(|(mode, glyph, name, active)| {
+                                    Self::clickable(
+                                        SharedString::from(format!("palette-{mode:?}")),
+                                        cx,
+                                        move |shell, _| shell.open_palette(mode),
+                                    )
                                         .h(px(26.0))
                                         .flex()
                                         .items_center()
@@ -727,7 +858,10 @@ impl Shell {
                                 }),
                             )
                             .child(div().flex_1())
-                            .child(Self::icon(Icon::X, 10.0, Palette::dim())),
+                            .child(
+                                Self::clickable("palette-close", cx, |shell, _| shell.close_overlay())
+                                .child(Self::icon(Icon::X, 10.0, Palette::dim())),
+                            ),
                     )
                     // 2. Search input.
                     .child(
@@ -791,6 +925,23 @@ impl Shell {
             Tint::Warning => Palette::warning(),
             Tint::Modified => Palette::warning(),
         }
+    }
+
+    /// Wraps a control so it reacts. Every interactive element in the shell goes
+    /// through here, so the cursor affordance and the identifier convention are
+    /// the same everywhere and a control cannot be made clickable by accident.
+    fn clickable(
+        id: impl Into<SharedString>,
+        cx: &mut Context<Self>,
+        action: impl Fn(&mut Self, &mut Context<Self>) + 'static,
+    ) -> gpui::Stateful<gpui::Div> {
+        div()
+            .id(id.into())
+            .cursor_pointer()
+            .on_click(cx.listener(move |shell, _event, _window, cx| {
+                action(shell, cx);
+                cx.notify();
+            }))
     }
 
     pub(crate) fn key_hint(glyph: &'static str, label: &str) -> impl IntoElement {
@@ -932,7 +1083,7 @@ impl Shell {
 }
 
 impl Render for Shell {
-    fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let viewport_height: f32 = window.viewport_size().height.into();
         self.commands.dispatch("shell.render");
 
@@ -944,7 +1095,7 @@ impl Render for Shell {
             .flex_col()
             .bg(rgb(Palette::bg()))
             .text_color(rgb(Palette::text()))
-            .child(self.toolbar())
+            .child(self.toolbar(cx))
             .child(
                 // The tool window runs the full height of the window, and the
                 // dock sits beside it rather than under it, so the terminal
@@ -954,8 +1105,8 @@ impl Render for Shell {
                     .w_full()
                     .flex()
                     .when(side_first, |row| {
-                        row.child(self.rail()).when(!self.props.side_collapsed, |row| {
-                            row.child(self.tool_window())
+                        row.child(self.rail(cx)).when(!self.props.side_collapsed, |row| {
+                            row.child(self.tool_window(cx))
                         })
                     })
                     .child(
@@ -968,24 +1119,24 @@ impl Render for Shell {
                                 column.child(self.packs_view())
                             })
                             .when(self.props.rail_tab != RailTab::Packs, |column| {
-                                column.child(self.editor())
+                                column.child(self.editor(cx))
                             })
                             .when(!self.props.dock_collapsed, |column| {
-                                column.child(self.dock(viewport_height))
+                                column.child(self.dock(viewport_height, cx))
                             })
                             .when(self.props.dock_collapsed, |column| {
-                                column.child(self.collapsed_dock())
+                                column.child(self.collapsed_dock(cx))
                             }),
                     )
                     .when(!side_first, |row| {
-                        row.when(!self.props.side_collapsed, |row| row.child(self.tool_window()))
-                            .child(self.rail())
+                        row.when(!self.props.side_collapsed, |row| row.child(self.tool_window(cx)))
+                            .child(self.rail(cx))
                     }),
             )
-            .child(self.status_bar())
+            .child(self.status_bar(cx))
             .when(self.props.perf_readout == PerfReadout::Hud, |shell| {
                 shell.child(self.latency_hud())
             })
-            .when(self.props.overlay == Overlay::Palette, |shell| shell.child(self.palette()))
+            .when(self.props.overlay == Overlay::Palette, |shell| shell.child(self.palette(cx)))
     }
 }

@@ -220,6 +220,23 @@ them. A control that appears to act and does nothing is correct here; one that h
 - [X] T100 [US5] Add the build check that fails when an unrecorded prototype extension is present, closing FR-016 and FR-033
 - [X] T101 [US5] Capture the fidelity reference from the shell and confirm the comparison reports no difference
 - [ ] T102 [US5] Measure the shell against every budget on the authoritative runner, confirming the gate has a real subject
+- [X] T112 [US5] Make the shell respond to input. It renders every state but handles no event:
+      there is no `on_click`, no key binding, and props are fixed at construction, so
+      quickstart.md's "Prove it responds" section cannot be performed. Covers the rail, the
+      collapse controls, editor tabs, the palette opening, filtering and closing, and the run
+      configuration dropdown
+- [ ] T113 [US5] Make the tool window and dock resizable by dragging their edge, within the
+      widths the manifest declares
+- [X] T114 [US5] Switch density, tool side and performance readout at runtime rather than only
+      at construction
+- [ ] T115 [US2] Inject round-trip latency for the 0, 10, 30 and 80 ms profiles. `round_trip_ms`
+      is recorded in every measurement but nothing applies it, so a completion-popup figure is a
+      local measurement wearing a latency label
+- [ ] T116 [US2] Prove the constrained runner constrains: `cpu.max` and `memory.max` applied and
+      observed, not requested. The code has only ever been seen to refuse
+- [ ] T117 [US2] Record real frame timings. `KeystrokeToPaint`, `ScrollTickToPaint`,
+      `HighlightUpdate` and `LongestUiThreadTask` are emittable but never populated, because
+      nothing calls `Instrument::record` from the render or input path. Depends on T112
 
 **Checkpoint**: The approved interface exists, responds, and is measured. Every later feature
 gives its controls something to do.

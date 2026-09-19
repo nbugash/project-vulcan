@@ -58,6 +58,10 @@ pub struct Props {
     /// `comp: true` in the prototype's initial state: the popup is part of the
     /// depicted composition, not a state you have to reach.
     pub completion_open: bool,
+    /// Which editor tab is in front.
+    pub active_tab: usize,
+    /// Which dock panel is in front: terminal, debug, problems, resources.
+    pub dock_panel: usize,
 }
 
 impl Default for Props {
@@ -76,6 +80,8 @@ impl Default for Props {
             palette_query: "",
             completion_style: CompletionStyle::Detail,
             completion_open: true,
+            active_tab: 0,
+            dock_panel: 0,
         }
     }
 }
