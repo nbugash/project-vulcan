@@ -61,3 +61,4 @@ mockups/fonts/ttf/
 # look at, and not kept afterwards.
 reports/macos/*
 !reports/macos/.gitkeep
+!reports/macos/README.md

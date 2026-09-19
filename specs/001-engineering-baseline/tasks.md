@@ -219,11 +219,16 @@ them. A control that appears to act and does nothing is correct here; one that h
 - [X] T099 [US5] Record every state reached that the prototype does not depict as a prototype extension, per FR-033
 - [X] T100 [US5] Add the build check that fails when an unrecorded prototype extension is present, closing FR-016 and FR-033
 - [X] T101 [US5] Capture the fidelity reference from the shell and confirm the comparison reports no difference
-- [ ] T102 [US5] Measure the shell against every budget **it can exercise** on the authoritative
-      runner, confirming the gate has a real subject. Seven of the eighteen declared metrics are
-      reachable from a shell with no language server, index or search: cold start, longest
-      UI-thread task, keystroke to paint, the three resident memory figures, and idle processor.
-      The rest are deferred to the features that create them (T118)
+- [X] T102 [US5] Measure the shell against every budget **it can exercise** on the authoritative
+      runner, confirming the gate has a real subject. Done 2026-09-19 on an M3 Pro, 5P + 6E,
+      18 GB, macOS 26.6.2, rendering through Metal. Six of the seven met; `IdleCpu` measured
+      1.5% against a 1.0% budget, so the gate returned a verdict rather than a refusal, which
+      is what this task was for. The overage is T119
+- [ ] T119 [US2] The shell uses 1.5% of a core while idle, against a 1.0% budget. Measured
+      three times on Apple Silicon at 1.35%, 1.5% and 1.57%, and around 1.1% on Linux, so it is
+      the product rather than the machine. Find what runs when nothing is happening — a display
+      link ticking at the panel's refresh rate with no damage to present is the first
+      suspect — and stop it. Raising the budget to meet the measurement is not a resolution
 - [ ] T118 Move the budgets the shell cannot exercise to the features that own them:
       `CompletionPopup` and `DiagnosticsAfterPause` to the language server feature,
       `FuzzyFileOpen` to the file finder, `ProjectTextSearch` to search, and
