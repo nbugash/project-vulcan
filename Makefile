@@ -148,6 +148,16 @@ visibility-token: ## Store the PAT the CI restore job needs
 check-visibility-token: ## Check that PAT can do what the restore job needs
 	./tools/check-visibility-token.sh
 
+# ---- macOS -------------------------------------------------------------------
+
+.PHONY: macos-verify
+macos-verify: ## Run on a Mac: the checks only a Mac can answer
+	./tools/macos-verify.sh
+
+.PHONY: macos-verify-sudo
+macos-verify-sudo: ## The same, including the latency profiles, which need sudo
+	./tools/macos-verify.sh --sudo
+
 # ---- Housekeeping ------------------------------------------------------------
 
 $(PY):
