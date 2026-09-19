@@ -144,6 +144,10 @@ restore: ## Put visibility back after a cycle that was killed
 visibility-token: ## Store the PAT the CI restore job needs
 	./tools/setup-visibility-token.sh
 
+.PHONY: check-visibility-token
+check-visibility-token: ## Check that PAT can do what the restore job needs
+	./tools/check-visibility-token.sh
+
 # ---- Housekeeping ------------------------------------------------------------
 
 $(PY):
