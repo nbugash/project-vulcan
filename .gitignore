@@ -60,3 +60,4 @@ mockups/fonts/ttf/
 # Results from a run on a Mac. Carried here by hand when there is something to
 # look at, and not kept afterwards.
 reports/macos/
+!reports/macos/.gitkeep
