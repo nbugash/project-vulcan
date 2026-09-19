@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/vulcan-domain",
+    "crates/vulcan-app",
+    "crates/vulcan-adapters",
+    "crates/vulcan-ui",
+    "crates/vulcan-cli",
+    "tools/gate-boundary",
+    "tools/gate-budget",
+    "tools/gate-fidelity",
+    "tools/shell-preview",
+]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.83"

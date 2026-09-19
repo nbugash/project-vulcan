@@ -1,0 +1,135 @@
+# T032, T048, T068, T069: the constitution's gates, run on every change.
+#
+# A gate that only runs when someone remembers to run it protects nothing.
+name: gates
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  boundary-and-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Workspace tests
+        run: cargo test --workspace --locked
+      - name: Gate 1 - architectural boundaries
+        run: cargo run --quiet -p gate-boundary
+      - name: Every gate refuses rather than passes without its prerequisites
+        run: ./tools/check-prerequisites.sh
+      - name: Gate 9 - sequencing script tests
+        # The extension is maintained in the spec-kit repository, but the copy
+        # vendored here is the one that decides whether a feature may be
+        # specified, so it is the copy these thirty tests run against.
+        run: |
+          python3 -m pip install --quiet pytest
+          python3 -m pytest .specify/extensions/featuremap/tests/ -q
+      - name: Gate 9 - feature sequencing
+        run: |
+          python3 .specify/extensions/featuremap/scripts/python/feature_map.py verify
+          python3 .specify/extensions/featuremap/scripts/python/feature_map.py resolve
+      - name: Gate 9 - blocks a feature whose dependencies are unfinished
+        # A gate never seen to block has not been validated. F001 depends on
+        # F000, which is unfinished, so this must exit 2 rather than resolve.
+        run: |
+          set +e
+          python3 .specify/extensions/featuremap/scripts/python/feature_map.py resolve F001
+          code=$?
+          set -e
+          if [ "$code" -ne 2 ]; then
+            echo "expected exit 2 (blocked), got $code" >&2
+            exit 1
+          fi
+
+  fidelity:
+    # Capture runs under a headless wlroots session inside the pinned image:
+    # GPUI presents a Vulkan swapchain, and X11 would need DRI3 that a machine
+    # without a GPU does not have.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Gate 8 - off-token lint
+        run: cargo run --quiet -p gate-fidelity -- lint
+      - name: Gate 8 - discrepancy triage
+        run: cargo run --quiet -p gate-fidelity -- discrepancies
+      - name: Gate 8 - token extraction
+        run: cargo run --quiet -p gate-fidelity -- extract
+      - name: Gate 8 - extraction is deterministic
+        run: |
+          cp tools/gate-fidelity/out/tokens.json /tmp/first.json
+          cargo run --quiet -p gate-fidelity -- extract
+          diff -q /tmp/first.json tools/gate-fidelity/out/tokens.json
+      - name: Gate 8 - prototype fidelity
+        run: ./tools/gate-fidelity/run-in-pinned-env.sh compare
+
+  budgets-authoritative:
+    # Apple Silicon, on the macOS 26 arm64 image that went generally available
+    # on 2026-02-26. Pinned rather than `macos-latest`, because `-latest`
+    # migrates to a new image without the repository changing, and a budget
+    # measured on a machine that silently moved is not a measurement.
+    #
+    # This runner is 3 arm64 vCPUs and 7 GB. The baseline is six cores as two
+    # performance plus four efficiency, and 8 GB. It does not match, which is
+    # why every measurement records the topology it was taken on and a baseline
+    # from a different topology is rejected rather than compared. See the note
+    # in research.md before treating a number from here as the baseline's.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      # A cold build of GPUI dominates the suite's runtime on three cores, and
+      # SC-007 budgets the whole suite at fifteen minutes.
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: macos-26-cargo-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: macos-26-cargo-
+
+      # Printed before the gate runs so the log says what machine produced the
+      # numbers, whatever the gate then decides.
+      - name: Observed machine
+        run: |
+          echo "arch:        $(uname -m)"
+          echo "macOS:       $(sw_vers -productVersion)"
+          echo "logical:     $(sysctl -n hw.logicalcpu)"
+          echo "performance: $(sysctl -n hw.perflevel0.logicalcpu 2>/dev/null || echo 'not reported')"
+          echo "efficiency:  $(sysctl -n hw.perflevel1.logicalcpu 2>/dev/null || echo 'not reported')"
+          echo "memory:      $(( $(sysctl -n hw.memsize) / 1024 / 1024 )) MB"
+
+      - name: Gate 5 - resource budgets (authoritative)
+        # Exit 0 passes, 2 fails a budget, 1 means the gate could not judge.
+        # All three are meaningful and only the first is success, so the step
+        # is left to fail on any non-zero rather than being softened.
+        run: |
+          cargo run --quiet -p gate-budget -- \
+            --runner apple-silicon \
+            --report reports/budgets/apple-silicon.json
+
+      - name: Publish the measurement report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: budget-report-apple-silicon
+          path: reports/budgets/
+          if-no-files-found: ignore
+
+  budgets-advisory:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Gate 5 - resource budgets (advisory)
+        run: |
+          cargo run --quiet -p gate-budget -- \
+            --runner linux-cgroup \
+            --report reports/budgets/linux-cgroup.json

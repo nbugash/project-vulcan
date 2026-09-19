@@ -1,0 +1,35 @@
+# Pinned rendering environment for gate 8.
+#
+# Capture runs under a headless wlroots compositor rather than a virtual X
+# framebuffer. That is not a preference: GPUI presents a Vulkan swapchain, and on
+# X11 that handoff needs DRI3, which no virtual framebuffer supplies. Wayland
+# presents through wl_shm, which is plain shared memory and needs no DRM device,
+# so software rendering works with nothing but CPU.
+#
+# Versions are pinned because exact comparison requires identical rasterisation:
+# the compositor, the Vulkan software driver and the typefaces all decide pixels.
+FROM docker.io/library/rust:1.83-slim-bookworm
+
+ENV VULCAN_PINNED_ENV=1 \
+    VULCAN_PINNED_ENV_VERSION=2 \
+    WLR_BACKENDS=headless \
+    WLR_RENDERER=pixman \
+    WLR_LIBINPUT_NO_DEVICES=1 \
+    VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json \
+    XDG_RUNTIME_DIR=/run/vulcan
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      sway \
+      grim \
+      mesa-vulkan-drivers \
+      libvulkan1 \
+      fontconfig \
+      && rm -rf /var/lib/apt/lists/* \
+      && mkdir -p /run/vulcan && chmod 700 /run/vulcan
+
+# Prototype typefaces are vendored in the repository, never fetched.
+COPY mockups/fonts /usr/share/fonts/truetype/vulcan-inter
+COPY mockups/icons /usr/share/fonts/truetype/vulcan-phosphor
+RUN fc-cache -f
+
+WORKDIR /work

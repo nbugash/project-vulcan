@@ -1,0 +1,14 @@
+[package]
+name = "gate-budget"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+
+[package.metadata.vulcan]
+layer = "Tooling"
+
+[dependencies]
+vulcan-cli = { path = "../../crates/vulcan-cli" }
+vulcan-adapters = { path = "../../crates/vulcan-adapters" }
+vulcan-app = { path = "../../crates/vulcan-app" }
+vulcan-domain = { path = "../../crates/vulcan-domain" }

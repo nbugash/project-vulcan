@@ -1,0 +1,13 @@
+[package]
+name = "vulcan-cli"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+
+[package.metadata.vulcan]
+layer = "Composition"
+
+[dependencies]
+vulcan-adapters = { path = "../vulcan-adapters" }
+vulcan-app = { path = "../vulcan-app" }
+vulcan-domain = { path = "../vulcan-domain" }
