@@ -18,7 +18,9 @@ pub(crate) fn run_measured(
     let report_path = std::env::temp_dir().join(format!("vulcan-measure-{round_trip_ms}.json"));
     let _ = std::fs::remove_file(&report_path);
 
-    let status = std::process::Command::new("target/debug/shell-preview")
+    let target = std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "target".into());
+    let binary = std::path::Path::new(&target).join("debug").join("shell-preview");
+    let status = std::process::Command::new(&binary)
         .args(["--measure", report_path.to_str().unwrap_or_default()])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())

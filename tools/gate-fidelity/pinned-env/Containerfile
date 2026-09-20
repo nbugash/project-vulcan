@@ -8,32 +8,54 @@
 #
 # Versions are pinned because exact comparison requires identical rasterisation:
 # the compositor, the Vulkan software driver and the typefaces all decide pixels.
-FROM docker.io/library/rust:1.83-slim-bookworm
+# The toolchain matches rust-toolchain.toml. An older one made rustup download
+# the pinned version on every run, inside the environment that is supposed to be
+# fixed.
+FROM docker.io/library/rust:1.98-slim-bookworm
 
 ENV VULCAN_PINNED_ENV=1 \
     VULCAN_PINNED_ENV_VERSION=2 \
     WLR_BACKENDS=headless \
     WLR_RENDERER=pixman \
     WLR_LIBINPUT_NO_DEVICES=1 \
-    VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json \
-    XDG_RUNTIME_DIR=/run/vulcan
+    VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
 
+# sway and grim run the session; the rest are what the product itself links
+# against at runtime. The image had only the first group, so the compositor
+# started and the shell then failed to load, leaving an empty desktop for the
+# capture — which the comparison faithfully reported as every pixel differing.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       sway \
       grim \
       mesa-vulkan-drivers \
       libvulkan1 \
       fontconfig \
+      libxkbcommon0 \
+      libxkbcommon-x11-0 \
+      libxcb1 \
+      libxcb-render0 \
+      libxcb-shm0 \
+      libwayland-client0 \
+      libfontconfig1 \
       && rm -rf /var/lib/apt/lists/*
 
-# sway refuses to run as root — "Unable to drop root (we shouldn't be able to
-# anyway)" — so the session needs a real user. Locally the invoking user is not
-# root and this never came up; in CI the container runs as root and every
-# comparison failed before the compositor started.
-RUN useradd --create-home --uid 1000 vulcan \
-      && mkdir -p /run/vulcan \
-      && chown vulcan:vulcan /run/vulcan \
-      && chmod 700 /run/vulcan
+# A default non-root user, because sway refuses to run as root. The uid is not
+# fixed anywhere else: the caller may run this image as any uid, and CI does, so
+# nothing may depend on owning a path baked into the image. The session's
+# runtime directory is created per-uid under /tmp by the entry script, which is
+# the only way to satisfy Wayland's requirement that it be owned by the running
+# user at mode 0700.
+RUN useradd --create-home vulcan
+ENV HOME=/tmp \
+    # Never share the host's target directory. The repository is bind-mounted,
+    # so the container would find binaries built against the host's glibc and
+    # fail to run them against its own — which is what left the compositor
+    # showing an empty desktop for the capture to photograph.
+    #
+    # Inside the mount rather than in /tmp, because the container is discarded
+    # after every run and a target directory in /tmp would mean rebuilding GPUI
+    # from nothing each time. target/ is already untracked.
+    CARGO_TARGET_DIR=/work/target/pinned-env
 
 # Prototype typefaces are vendored in the repository, never fetched.
 COPY mockups/fonts /usr/share/fonts/truetype/vulcan-inter

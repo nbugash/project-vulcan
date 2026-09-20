@@ -18,18 +18,15 @@ RUNTIME="${CONTAINER_RUNTIME:-$(command -v podman || command -v docker || true)}
 # Inside the pinned environment already: start a session and run the gate.
 if [[ "${VULCAN_PINNED_ENV:-0}" == "1" && "${VULCAN_SESSION:-0}" != "1" ]]; then
   export VULCAN_SESSION=1
-  # The image already creates this owned by the session user with the right
-  # mode. Outside the image it may not exist. Create it when missing, and only
-  # tighten a directory this process owns: chmod on someone else's fails, which
-  # is what stopped the compositor the first time CI ran the container as a
-  # non-root user.
-  runtime="${XDG_RUNTIME_DIR:-/run/vulcan}"
-  [ -d "${runtime}" ] || mkdir -p "${runtime}"
-  # An `&&` list here would end the script under `set -e` whenever the test is
-  # false, which is the common case.
-  if [ -O "${runtime}" ]; then
-    chmod 700 "${runtime}"
-  fi
+  # Wayland requires the runtime directory to be owned by the running user at
+  # mode 0700. A path baked into the image cannot satisfy that, because the
+  # caller chooses the uid — the image assumed 1000 and CI runs as 1001, so sway
+  # could not create its socket and the compositor never started. Deriving the
+  # path from the uid under /tmp works for any of them.
+  runtime="${XDG_RUNTIME_DIR:-/tmp/vulcan-$(id -u)}"
+  mkdir -p "${runtime}"
+  chmod 700 "${runtime}"
+  export XDG_RUNTIME_DIR="${runtime}"
 
   config="$(mktemp)"
   {
@@ -38,9 +35,19 @@ if [[ "${VULCAN_PINNED_ENV:-0}" == "1" && "${VULCAN_SESSION:-0}" != "1" ]]; then
     # nothing the compositor drew around them.
     echo "default_border none"
     echo "default_floating_border none"
-    echo "titlebar_padding 0"
     echo "exec ${0} __in_session__ $*"
   } > "${config}"
+
+  # Validate before starting. sway shows an error screen for a bad config and
+  # carries on, and `grim` then captures that screen: a run once approved a
+  # picture of sway's "There are errors in your config file" dialog as the
+  # signed-off reference. A compositor that did not start the way we asked must
+  # stop the gate, not decorate it.
+  if ! sway -c "${config}" -C >/dev/null 2>&1; then
+    echo "ERROR: the session config is invalid:" >&2
+    sway -c "${config}" -C 2>&1 | grep -i "error on line" >&2
+    exit 1
+  fi
 
   exec sway -c "${config}"
 fi
@@ -70,6 +77,7 @@ exec "${RUNTIME}" run --rm \
   -v "${REPO_ROOT}:/work:z" \
   --user "$(id -u):$(id -g)" \
   -e VULCAN_PINNED_ENV=1 \
+  -e HOME=/tmp \
   -e VULCAN_VIEWPORT="${VIEWPORT}" \
   "${IMAGE}" \
   /work/tools/gate-fidelity/run-in-pinned-env.sh "$@"

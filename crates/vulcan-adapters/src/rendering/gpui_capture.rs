@@ -21,7 +21,7 @@ pub struct GpuiCaptureAdapter {
 impl Default for GpuiCaptureAdapter {
     fn default() -> Self {
         Self {
-            preview_binary: PathBuf::from("target/debug/shell-preview"),
+            preview_binary: preview_binary(),
             // The compositor needs a presented frame before there is anything
             // to copy; capturing sooner yields the pre-first-frame surface.
             settle: std::time::Duration::from_secs(9),
@@ -100,4 +100,14 @@ fn typefaces_present() -> Result<(), RenderError> {
         }
     }
     Ok(())
+}
+
+/// Where the shell binary is, which is not always `target/`.
+///
+/// The pinned environment builds into a target directory of its own, because
+/// the repository is bind-mounted and binaries built against the host's C
+/// library will not run against the container's.
+fn preview_binary() -> PathBuf {
+    let target = std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "target".into());
+    PathBuf::from(target).join("debug").join("shell-preview")
 }

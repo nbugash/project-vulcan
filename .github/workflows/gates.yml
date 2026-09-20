@@ -91,17 +91,16 @@ jobs:
       - name: Gate 8 - prototype fidelity
         run: ./tools/gate-fidelity/run-in-pinned-env.sh compare
 
-  budgets-authoritative:
-    # Apple Silicon, on the macOS 26 arm64 image that went generally available
-    # on 2026-02-26. Pinned rather than `macos-latest`, because `-latest`
-    # migrates to a new image without the repository changing, and a budget
-    # measured on a machine that silently moved is not a measurement.
+  macos-build:
+    # Proves the product compiles for arm64 macOS, links against Metal and
+    # starts. It does not judge budgets.
     #
-    # This runner is 3 arm64 vCPUs and 7 GB. The baseline is six cores as two
-    # performance plus four efficiency, and 8 GB. It does not match, which is
-    # why every measurement records the topology it was taken on and a baseline
-    # from a different topology is rejected rather than compared. See the note
-    # in research.md before treating a number from here as the baseline's.
+    # It used to, and called itself authoritative. The runner is 3 arm64 vCPUs
+    # and 7 GB; it reported a cold start of 1568 ms where an M3 Pro reports 95 ms
+    # for the same commit. Two machines disagreeing by sixteen times cannot both
+    # inform a budget, and this is the one further from the six-core, 8 GB
+    # baseline. Verdicts come from `make macos-verify` on real hardware until
+    # there is a machine of the baseline's class to run them on (T120).
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
@@ -131,27 +130,17 @@ jobs:
           echo "efficiency:  $(sysctl -n hw.perflevel1.logicalcpu 2>/dev/null || echo 'not reported')"
           echo "memory:      $(( $(sysctl -n hw.memsize) / 1024 / 1024 )) MB"
 
-      - name: Gate 5 - resource budgets (authoritative)
-        # Exit 0 passes, 2 fails a budget, 1 means the gate could not judge.
-        # All three are meaningful and only the first is success, so the step
-        # is left to fail on any non-zero rather than being softened.
-        run: |
-          cargo build --workspace --quiet
-          # 0ms only. The other profiles need dnctl and pfctl, which need sudo
-          # this job does not have, and the gate refuses rather than reporting a
-          # latency that was never applied. Those profiles are covered by
-          # `make macos-verify-sudo` on a real Mac.
-          cargo run --quiet -p gate-budget -- \
-            --runner apple-silicon --rtt 0 \
-            --report reports/budgets/apple-silicon.json
+      - name: Build for arm64 macOS
+        # GPUI presents through Metal here and Vulkan on Linux, so this is the
+        # only check that the product builds for a platform it claims to target.
+        run: cargo build --workspace --quiet
 
-      - name: Publish the measurement report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: budget-report-apple-silicon
-          path: reports/budgets/
-          if-no-files-found: ignore
+      - name: The shell starts and resolves its layout
+        run: cargo run --quiet -p shell-preview -- --smoke
+
+      - name: Tests
+        run: cargo test --workspace
+
 
   budgets-advisory:
     runs-on: ubuntu-latest
@@ -192,7 +181,7 @@ jobs:
     needs:
       - boundary-and-tests
       - fidelity
-      - budgets-authoritative
+      - macos-build
       - budgets-advisory
     if: always() && github.event_name == 'workflow_dispatch' && inputs.restore_private
     runs-on: ubuntu-latest
