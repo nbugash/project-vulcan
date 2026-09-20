@@ -107,6 +107,21 @@ fn main() {
         if let Some(path) = measure.clone() {
             let instrument = instrument.clone();
             cx.spawn(async move |cx| {
+                // Make the window key before anything is measured.
+                //
+                // `cx.activate(true)` above activates the application, which is
+                // not the same thing. On macOS the draw loop is a CVDisplayLink
+                // that GPUI starts from `windowDidBecomeKey` and from a change
+                // in occlusion state; a window that never becomes key never
+                // starts it. The dirty flag was being set correctly on every one
+                // of the 300 inputs below and nothing ever ticked to consume it,
+                // so a run on an M3 Pro drew two frames in two and a half
+                // seconds and reported no KeystrokeToPaint at all.
+                //
+                // Linux hid this: there the frame loop runs regardless, so the
+                // input-to-paint figures happened to be collected.
+                let _ = window.update(cx, |_, win, _| win.activate_window());
+
                 // Let the first frame land, then record a run of frames.
                 cx.background_executor()
                     .timer(std::time::Duration::from_secs(3))
@@ -121,7 +136,7 @@ fn main() {
                 // is honest but useless: the budget that matters most goes
                 // unmeasured on every run.
                 for step in 0..300u32 {
-                    let _ = window.update(cx, |shell, _window, cx| {
+                    let _ = window.update(cx, |shell, win, cx| {
                         match step % 4 {
                             0 => shell.select_rail(RailTab::Structure),
                             1 => shell.select_tab((step as usize / 4) % 3),
@@ -129,6 +144,13 @@ fn main() {
                             _ => shell.toggle_hud(),
                         }
                         cx.notify();
+                        // Ask the window for a frame as well as marking the view
+                        // dirty. `notify` reaches the window only through the
+                        // invalidator registered for this entity; `refresh` is
+                        // the window's own documented way to say redraw me, and
+                        // the two disagreeing is not a difference worth relying
+                        // on when the whole point is to count frames.
+                        win.refresh();
                     });
                     cx.background_executor()
                         .timer(std::time::Duration::from_millis(8))
@@ -163,7 +185,15 @@ fn main() {
                 // The input above must have produced frames, or KeystrokeToPaint
                 // is silently absent and the gate refuses without saying why.
                 let painted = instrument.sample_count(Span::KeystrokeToPaint);
-                eprintln!("measured: {painted} input-to-paint samples, {last} frames in total");
+                // Whether the window was active is printed beside the counts,
+                // because it is the first thing worth knowing when they are low
+                // and the only way to tell a window that would not draw from a
+                // shell that would not respond.
+                let active = window.update(cx, |_, win, _| win.is_window_active()).unwrap_or(false);
+                eprintln!(
+                    "measured: {painted} input-to-paint samples, {last} frames in total, \
+                     window active: {active}"
+                );
                 instrument.sample_memory();
 
                 let report = instrument.to_json(Runner::LinuxCgroup, "unconstrained", 0);

@@ -1,0 +1,10 @@
+{
+  "check": "budgets",
+  "status": "FAIL",
+  "summary": "could not judge (exit 1)",
+  "recorded_at": "2026-09-20T02:51:49Z",
+  "run": "20260920T025108Z",
+  "commit": "c4147c169c0a6fa8e4fd5a3734724bee01cb46aa",
+  "host": { "arch": "arm64", "os": "26.6.2" },
+  "detail": "warning: use of deprecated static `libc::mach_task_self_`: Use the `mach2` crate instead\n   --> crates/vulcan-adapters/src/measurement/instrument.rs:242:19\n    |\n242 |             libc::mach_task_self_,\n    |                   ^^^^^^^^^^^^^^^\n    |\n    = note: `#[warn(deprecated)]` on by default\n\nnote: the measured run produced [\"LongestUiThreadTask\", \"ColdStart\", \"PeakResidentMemory\", \"TypicalResidentMemory\", \"IdleResidentMemory\"] and is kept at /var/folders/fg/7y7x3bdj1nz4c_dnczhcspkr0000gp/T/vulcan-measure-0.json\nnote: target/debug/shell-preview could not be evicted from the page cache on this platform, so cold start is not reported; the warm figure stands on its own\nCOULD NOT JUDGE: gate-budget — metric KeystrokeToPaint missing from the run at 0ms round trip"
+}

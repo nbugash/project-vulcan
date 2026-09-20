@@ -1,0 +1,9 @@
+{
+  "measurements": [
+    { "metric": "LongestUiThreadTask", "measured": 0.9209, "unit": "ms" },
+    { "metric": "ColdStart", "measured": 144.2883, "unit": "ms" },
+    { "metric": "PeakResidentMemory", "measured": 85.8281, "unit": "MB" },
+    { "metric": "TypicalResidentMemory", "measured": 85.8281, "unit": "MB" },
+    { "metric": "IdleResidentMemory", "measured": 85.8281, "unit": "MB" }
+  ]
+}
