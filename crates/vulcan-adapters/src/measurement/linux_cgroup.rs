@@ -31,6 +31,18 @@ impl ConstrainedRunnerPort for LinuxCgroupRunner {
             ));
         }
 
+        // A quota can name more cores than the machine has. The kernel accepts
+        // it, `cpu.max` reads it back, and the gate would report a six-core
+        // measurement from a four-core runner. The limit has to be a ceiling on
+        // something that exists.
+        let present = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(0);
+        if present < CORES as usize {
+            return Err(ConstraintError::NotEnforceable(format!(
+                "the baseline is {CORES} cores and this machine has {present}; a quota cannot \
+                 conjure cores it does not have, and a limit above the hardware is not a limit"
+            )));
+        }
+
         let group = root.join(GROUP);
         std::fs::create_dir_all(&group).map_err(|error| {
             ConstraintError::NotEnforceable(format!(

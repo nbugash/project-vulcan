@@ -21,6 +21,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - name: Linux build dependencies
+        # GPUI links against these; without them the workspace does not compile,
+        # which is what every Linux job failed on the first time CI ever ran.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libxcb1-dev libxcb-render0-dev libxcb-shm0-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev \
+            libwayland-dev libfontconfig-dev
       - name: Workspace tests
         run: cargo test --workspace --locked
       - name: Gate 1 - architectural boundaries
@@ -59,6 +68,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - name: Linux build dependencies
+        # GPUI links against these; without them the workspace does not compile,
+        # which is what every Linux job failed on the first time CI ever ran.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libxcb1-dev libxcb-render0-dev libxcb-shm0-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev \
+            libwayland-dev libfontconfig-dev
       - name: Gate 8 - off-token lint
         run: cargo run --quiet -p gate-fidelity -- lint
       - name: Gate 8 - discrepancy triage
@@ -118,6 +136,7 @@ jobs:
         # All three are meaningful and only the first is success, so the step
         # is left to fail on any non-zero rather than being softened.
         run: |
+          cargo build --workspace --quiet
           cargo run --quiet -p gate-budget -- \
             --runner apple-silicon \
             --report reports/budgets/apple-silicon.json
@@ -136,9 +155,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Gate 5 - resource budgets (advisory)
+      - name: Linux build dependencies
+        # GPUI links against these; without them the workspace does not compile,
+        # which is what every Linux job failed on the first time CI ever ran.
         run: |
-          cargo run --quiet -p gate-budget -- \
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libxcb1-dev libxcb-render0-dev libxcb-shm0-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev \
+            libwayland-dev libfontconfig-dev
+      - name: Gate 5 - resource budgets (advisory)
+        # The shell is spawned by the gate, so it has to exist before the gate
+        # runs; `cargo run -p gate-budget` builds only the gate.
+        run: |
+          cargo build --workspace --quiet
+          # Applying cpu.max and memory.max needs write access to the cgroup
+          # hierarchy. Without this the gate refuses, correctly, every time.
+          sudo -E env "PATH=$PATH" cargo run --quiet -p gate-budget -- \
             --runner linux-cgroup \
             --report reports/budgets/linux-cgroup.json
 

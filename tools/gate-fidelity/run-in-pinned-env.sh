@@ -57,6 +57,7 @@ fi
 
 exec "${RUNTIME}" run --rm \
   -v "${REPO_ROOT}:/work:z" \
+  --user "$(id -u):$(id -g)" \
   -e VULCAN_PINNED_ENV=1 \
   -e VULCAN_VIEWPORT="${VIEWPORT}" \
   "${IMAGE}" \

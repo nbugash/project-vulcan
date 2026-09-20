@@ -39,3 +39,18 @@ fn the_runner_refuses_when_it_cannot_apply_the_limits() {
         }
     }
 }
+
+#[test]
+fn a_machine_with_too_few_cores_is_refused_before_any_quota_is_written() {
+    // CI runners have four cores. Writing a six-core quota there succeeds, and
+    // `cpu.max` reads back six, so the gate would report a baseline measurement
+    // from hardware that cannot provide one.
+    let present = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(0);
+    match LinuxCgroupRunner.assert_constraints() {
+        Err(ConstraintError::NotEnforceable(reason)) if present < 6 => {
+            assert!(reason.contains("cores"), "{reason}");
+        }
+        Err(ConstraintError::NotEnforceable(_)) => {}
+        Ok(topology) => assert_eq!(topology.performance, 6),
+    }
+}

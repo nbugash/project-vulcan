@@ -24,8 +24,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       mesa-vulkan-drivers \
       libvulkan1 \
       fontconfig \
-      && rm -rf /var/lib/apt/lists/* \
-      && mkdir -p /run/vulcan && chmod 700 /run/vulcan
+      && rm -rf /var/lib/apt/lists/*
+
+# sway refuses to run as root — "Unable to drop root (we shouldn't be able to
+# anyway)" — so the session needs a real user. Locally the invoking user is not
+# root and this never came up; in CI the container runs as root and every
+# comparison failed before the compositor started.
+RUN useradd --create-home --uid 1000 vulcan \
+      && mkdir -p /run/vulcan \
+      && chown vulcan:vulcan /run/vulcan \
+      && chmod 700 /run/vulcan
 
 # Prototype typefaces are vendored in the repository, never fetched.
 COPY mockups/fonts /usr/share/fonts/truetype/vulcan-inter
@@ -33,3 +41,4 @@ COPY mockups/icons /usr/share/fonts/truetype/vulcan-phosphor
 RUN fc-cache -f
 
 WORKDIR /work
+USER vulcan
