@@ -38,6 +38,7 @@ RUN_AT=$(date -u +%Y%m%dT%H%M%SZ)
 passed=0
 failed=0
 skipped=0
+refused=0
 
 # Minimal JSON string escaper: backslash, quote, tab, and newlines.
 esc() {
@@ -73,6 +74,11 @@ record() {
   case "$status" in
     PASS) passed=$((passed+1)); printf '  \033[32mPASS\033[0m  %-22s %s\n' "$title" "$summary" ;;
     FAIL) failed=$((failed+1)); printf '  \033[31mFAIL\033[0m  %-22s %s\n' "$title" "$summary" ;;
+    # A gate that refuses has not failed. It says the run could not produce a
+    # verdict, which is a different thing from a verdict against you, and the
+    # remedy is different too. Counted apart so it is neither mistaken for a
+    # budget breach nor filed away with the checks nobody asked to run.
+    REFUSED) refused=$((refused+1)); printf '  \033[33m????\033[0m  %-22s %s\n' "$title" "$summary" ;;
     *)    skipped=$((skipped+1)); printf '  ----  %-22s %s\n' "$title" "$summary" ;;
   esac
 }
@@ -235,15 +241,39 @@ run_check "shell-smoke" "layout resolves from tokens" \
 # This opens a real window. It needs a logged-in session, not just SSH.
 measure_json="$OUT/measurements-$RUN_AT.json"
 measure_out=$(cargo run --quiet -p shell-preview -- --measure "$measure_json" 2>&1)
-if [ -s "$measure_json" ]; then
-  record "shell-render" PASS "rendered and reported its own timings" "$measure_out" \
-    "\"measurements_file\": \"$(esc "$measure_json")\""
-else
+
+# The run drives 300 inputs and the shell prints how many of them it painted.
+# Requiring only that a file was written let a run report PASS having drawn two
+# frames in two and a half seconds: the file existed, the window was never on
+# screen, and KeystrokeToPaint was absent from every metric that followed. A
+# check that can pass by producing nothing protects nothing.
+#
+# The floor is a third of the inputs, far below a healthy run's near-300 and far
+# above the handful a window that is not drawing manages, so it separates the two
+# without being a judgement about speed.
+painted=$(printf '%s' "$measure_out" | sed -n 's/^measured: \([0-9]*\) input-to-paint samples.*/\1/p' | tail -1)
+painted=${painted:-0}
+if [ ! -s "$measure_json" ]; then
   record "shell-render" FAIL "no measurements written" \
     "$measure_out
 
 If this says the window could not open, run it from a logged-in desktop session
 rather than over SSH: GPUI needs a window server."
+elif [ "$painted" -lt 100 ]; then
+  record "shell-render" FAIL "the window did not draw: $painted of 300 inputs painted" \
+    "$measure_out
+
+The shell wrote its measurements, but almost none of the 300 inputs the run drives
+produced a frame. On macOS GPUI draws through the window server, so a window that
+is not on screen never gets asked to. Every input-latency metric is missing from a
+run like this, and the budget gate then refuses for want of KeystrokeToPaint.
+
+Run it from a logged-in desktop session, with the window visible and frontmost --
+not over SSH, not with the window minimised or behind another Space." \
+    "\"inputs_painted\": $painted"
+else
+  record "shell-render" PASS "rendered and reported its own timings" "$measure_out" \
+    "\"measurements_file\": \"$(esc "$measure_json")\", \"inputs_painted\": $painted"
 fi
 
 # ---- 8. Budgets on the authoritative runner ----------------------------------
@@ -253,7 +283,11 @@ budget_code=$?
 case $budget_code in
   0) record "budgets" PASS "every budget met at 0ms round trip" "$budget_out" ;;
   2) record "budgets" FAIL "a budget was exceeded" "$budget_out" ;;
-  *) record "budgets" FAIL "could not judge (exit $budget_code)" "$budget_out" ;;
+  # Exit 1 is the gate declining to answer, which this used to file as FAIL.
+  # The distinction is the whole point of three exit codes: a breach means the
+  # product is too slow, a refusal means the run could not tell, and reading the
+  # second as the first sends you to optimise something nobody measured.
+  *) record "budgets" REFUSED "could not judge (exit $budget_code)" "$budget_out" ;;
 esac
 
 # ---- 9. Latency injection, which needs sudo ----------------------------------
@@ -275,7 +309,7 @@ fi
 
 # ---- Summary -----------------------------------------------------------------
 echo
-echo "  $passed passed, $failed failed, $skipped skipped"
+echo "  $passed passed, $failed failed, $refused could not judge, $skipped skipped"
 echo
 echo "Written to $OUT/ (run $RUN_AT):"
 ls -1 "$OUT" | grep -- "$RUN_AT" | sed 's/^/  /'
@@ -283,4 +317,8 @@ echo
 echo "Send it back with:"
 echo "  git add $OUT && git commit -m 'macOS verification: run $RUN_AT' && git push"
 echo
-[ "$failed" -eq 0 ]
+# A refusal leaves the budgets unverified on the only runner that decides them,
+# so it cannot exit 0. It is not a failure either, hence 1 rather than 2.
+if [ "$failed" -ne 0 ]; then exit 2; fi
+if [ "$refused" -ne 0 ]; then exit 1; fi
+exit 0
