@@ -101,6 +101,26 @@ jobs:
             libxcb1-dev libxcb-render0-dev libxcb-shm0-dev \
             libxkbcommon-dev libxkbcommon-x11-dev \
             libwayland-dev libfontconfig-dev
+      # The comparison compiles the workspace twice: once here on the runner and
+      # once inside the pinned image, which has its own target directory because
+      # its glibc differs from the runner's. Both are cold on a fresh runner and
+      # GPUI dominates each, so this job ran past thirteen minutes on its own
+      # against SC-007's fifteen for the whole suite.
+      #
+      # The pinned key includes the Containerfile: artifacts built inside the
+      # image are only valid for that image, so changing it must miss.
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target/debug
+            target/pinned-env
+          key: fidelity-cargo-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'tools/gate-fidelity/pinned-env/Containerfile') }}
+          restore-keys: fidelity-cargo-
+
       - name: Gate 8 - off-token lint
         run: cargo run --quiet -p gate-fidelity -- lint
       - name: Gate 8 - discrepancy triage
