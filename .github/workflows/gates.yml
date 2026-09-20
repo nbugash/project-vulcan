@@ -144,7 +144,6 @@ jobs:
 
   budgets-advisory:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -160,13 +159,31 @@ jobs:
       - name: Gate 5 - resource budgets (advisory)
         # The shell is spawned by the gate, so it has to exist before the gate
         # runs; `cargo run -p gate-budget` builds only the gate.
+        #
+        # The gate answers in three values, and this job has to honour all
+        # three. GitHub's hosted runners have four cores and the baseline is
+        # six, so the gate refuses with exit 1 — a quota cannot conjure cores
+        # that are not there, and reporting unconstrained numbers as if they
+        # were the baseline is the one outcome worse than reporting none. That
+        # refusal is the gate working, not the job failing, so it is surfaced as
+        # a notice. Exit 2 is a real over-budget verdict and still fails. The
+        # day a hosted runner has six cores this job starts judging on its own,
+        # with no change here.
         run: |
           cargo build --workspace --quiet
           # Applying cpu.max and memory.max needs write access to the cgroup
           # hierarchy. Without this the gate refuses, correctly, every time.
+          set +e
           sudo -E env "PATH=$PATH" cargo run --quiet -p gate-budget -- \
             --runner linux-cgroup \
             --report reports/budgets/linux-cgroup.json
+          code=$?
+          set -e
+          case "${code}" in
+            0) echo "budgets judged and within budget" ;;
+            1) echo "::notice::gate-budget could not judge on this runner; see the message above" ;;
+            *) exit "${code}" ;;
+          esac
 
   # The finally block.
   #
