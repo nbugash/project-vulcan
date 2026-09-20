@@ -52,6 +52,23 @@ Only the Apple Silicon result decides, because it reproduces the baseline's perf
 efficiency core split. Every measurement records the core topology it was taken on, and a
 baseline from a different topology is rejected rather than compared.
 
+Neither runner is the baseline machine, and they miss it in different directions. The Linux
+runner has the baseline's six cores and 8 GB, cgroup-enforced and read back, but they are
+homogeneous x86 cores rather than a performance and efficiency split. The Apple Silicon
+runner has the right kind of cores and too many of them: an 11-core, 18 GB M3 Pro against a
+6-core, 8 GB reference, with no way to constrain it, so its figures are optimistic. The
+authoritative designation follows core character rather than core count, which is worth
+revisiting now that the Linux side can enforce an envelope.
+
+`--report <path>` writes two files. The path given holds the verdict in the shape every gate
+shares; `<path stem>-measurements.json` holds each metric, its budget and its own verdict.
+Read the second when the runner is advisory: its over-budget metrics are deliberately left
+out of the findings that fail the gate, so this file is the only place they appear.
+
+`ColdStart` is absent from a macOS report. The measurement requires evicting the shell's
+binary from the page cache, Darwin offers no unprivileged way to do that, and a launch that
+read the binary from cache is a warm start whatever it is called.
+
 ### The budget exception path
 
 There isn't one that works by changing the number.
