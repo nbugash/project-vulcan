@@ -1,0 +1,324 @@
+#!/usr/bin/env bash
+#
+# Runs on a Mac the checks that cannot be run anywhere else, and writes one JSON
+# file per check to reports/macos/ for review elsewhere.
+#
+#   ./tools/macos-verify.sh            the checks that need no privilege
+#   ./tools/macos-verify.sh --sudo     also the latency profiles, which need it
+#
+# What it needs, all of which it checks before doing any work:
+#
+#   * a Mac with Apple Silicon — an Intel Mac cannot answer the question this
+#     script exists to ask
+#   * Xcode Command Line Tools: `xcode-select --install`, for clang and libclang
+#   * full Xcode, for the `metal` shader compiler. GPUI compiles its shaders
+#     during the build and the Command Line Tools do not ship that compiler
+#   * rustup, which installs the toolchain rust-toolchain.toml pins by itself
+#   * roughly 10 GB free, most of it the build
+#   * a logged-in desktop session for the check that opens a window; over SSH
+#     there is no window server and that one check fails
+#   * sudo, only with --sudo
+#
+# Written for the bash macOS ships, which is 3.2: no associative arrays, no
+# ${var,,}. Nothing here installs anything or changes any setting that outlives
+# the run.
+set -uo pipefail
+cd "$(dirname "$0")/.."
+
+OUT="reports/macos"
+WITH_SUDO=0
+[ "${1:-}" = "--sudo" ] && WITH_SUDO=1
+
+mkdir -p "$OUT"
+
+# One stamp for the whole run, so every file it writes groups together. Colons
+# are left out because they travel badly through filesystems and URLs.
+RUN_AT=$(date -u +%Y%m%dT%H%M%SZ)
+
+passed=0
+failed=0
+skipped=0
+refused=0
+
+# Minimal JSON string escaper: backslash, quote, tab, and newlines.
+esc() {
+  printf '%s' "$1" | awk '
+    BEGIN { ORS = "" }
+    {
+      gsub(/\\/, "\\\\");
+      gsub(/"/, "\\\"");
+      gsub(/\t/, "\\t");
+      if (NR > 1) print "\\n";
+      print;
+    }'
+}
+
+# record <title> <status> <summary> <detail> [extra-json]
+record() {
+  title="$1"; status="$2"; summary="$3"; detail="$4"; extra="${5:-}"
+  file="$OUT/verification-$title-$status-$RUN_AT.json"
+  {
+    printf '{\n'
+    printf '  "check": "%s",\n' "$(esc "$title")"
+    printf '  "status": "%s",\n' "$status"
+    printf '  "summary": "%s",\n' "$(esc "$summary")"
+    printf '  "recorded_at": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '  "run": "%s",\n' "$RUN_AT"
+    printf '  "commit": "%s",\n' "$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+    printf '  "host": { "arch": "%s", "os": "%s" },\n' "$(uname -m)" "$(sw_vers -productVersion 2>/dev/null || echo unknown)"
+    [ -n "$extra" ] && printf '  %s,\n' "$extra"
+    printf '  "detail": "%s"\n' "$(esc "$detail")"
+    printf '}\n'
+  } > "$file"
+
+  case "$status" in
+    PASS) passed=$((passed+1)); printf '  \033[32mPASS\033[0m  %-22s %s\n' "$title" "$summary" ;;
+    FAIL) failed=$((failed+1)); printf '  \033[31mFAIL\033[0m  %-22s %s\n' "$title" "$summary" ;;
+    # A gate that refuses has not failed. It says the run could not produce a
+    # verdict, which is a different thing from a verdict against you, and the
+    # remedy is different too. Counted apart so it is neither mistaken for a
+    # budget breach nor filed away with the checks nobody asked to run.
+    REFUSED) refused=$((refused+1)); printf '  \033[33m????\033[0m  %-22s %s\n' "$title" "$summary" ;;
+    *)    skipped=$((skipped+1)); printf '  ----  %-22s %s\n' "$title" "$summary" ;;
+  esac
+}
+
+# run <title> <summary-on-pass> <command...>
+run_check() {
+  title="$1"; shift
+  ok_summary="$1"; shift
+  output=$("$@" 2>&1)
+  code=$?
+  if [ $code -eq 0 ]; then
+    record "$title" PASS "$ok_summary" "$output"
+  else
+    record "$title" FAIL "exit $code" "$output"
+  fi
+  return $code
+}
+
+echo
+echo "Vulcan — macOS verification"
+echo "  repository: $(pwd)"
+echo "  commit:     $(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+echo
+
+# ---- Before doing any work ---------------------------------------------------
+# A missing prerequisite should cost a second, not eight minutes of compiling.
+missing=0
+need() {
+  printf '  %-34s %s\n' "$1" "$2"
+  missing=$((missing + 1))
+}
+
+echo "Prerequisites:"
+
+if [ "$(uname -s)" != "Darwin" ]; then
+  need "macOS" "this is $(uname -s); the checks below only mean something on a Mac"
+elif [ "$(uname -m)" != "arm64" ]; then
+  need "Apple Silicon" "this is $(uname -m); an Intel Mac cannot answer the topology question"
+else
+  printf '  %-34s %s\n' "macOS on Apple Silicon" "$(sw_vers -productVersion), $(uname -m)"
+fi
+
+if [ "$(uname -s)" = "Darwin" ]; then
+  if xcode-select -p >/dev/null 2>&1; then
+    printf '  %-34s %s\n' "Xcode Command Line Tools" "$(xcode-select -p)"
+  else
+    need "Xcode Command Line Tools" "run: xcode-select --install"
+  fi
+
+  # GPUI compiles its Metal shaders in a build script, and `metal` ships with
+  # full Xcode rather than the Command Line Tools. Checked here because the
+  # alternative is finding out several minutes into a build, which is how this
+  # check came to exist.
+  if xcrun -f metal >/dev/null 2>&1; then
+    printf '  %-34s %s\n' "metal shader compiler" "$(xcrun -f metal)"
+  else
+    need "metal shader compiler" "not present; the Command Line Tools do not include it"
+    printf '  %-34s %s\n' "" "install Xcode, then:"
+    printf '  %-34s %s\n' "" "  sudo xcode-select -s /Applications/Xcode.app/Contents/Developer"
+    printf '  %-34s %s\n' "" "  xcodebuild -runFirstLaunch"
+    printf '  %-34s %s\n' "" "  xcodebuild -downloadComponent metalToolchain   (Xcode 26)"
+  fi
+fi
+
+if command -v rustup >/dev/null 2>&1; then
+  printf '  %-34s %s\n' "rustup" "$(rustup --version 2>&1 | head -1)"
+elif command -v cargo >/dev/null 2>&1; then
+  printf '  %-34s %s\n' "cargo (no rustup)" "$(cargo --version 2>&1)"
+else
+  need "rustup" "install from https://rustup.rs"
+fi
+
+free_gb=$(df -g . 2>/dev/null | awk 'NR==2 {print $4}')
+if [ -n "${free_gb:-}" ] && [ "$free_gb" -lt 10 ] 2>/dev/null; then
+  need "10 GB free" "${free_gb} GB available; the build alone is most of it"
+else
+  printf '  %-34s %s\n' "disk" "${free_gb:-?} GB free"
+fi
+
+if [ "$WITH_SUDO" -eq 1 ] && ! sudo -n true 2>/dev/null; then
+  printf '  %-34s %s\n' "sudo" "will prompt"
+fi
+
+if [ "$missing" -gt 0 ]; then
+  echo
+  echo "  $missing prerequisite(s) missing; nothing was run."
+  exit 1
+fi
+echo
+
+# Only now, with the prerequisites known good. Clearing before the checks above
+# would throw away a previous run's results in order to then do nothing.
+#
+# One run's results at a time: nine files each, kept across runs, is a directory
+# nobody reads. The stamp says when; it is not there to build a history.
+stale=$(ls -1 "$OUT" 2>/dev/null | wc -l | tr -d ' ')
+if [ "${stale:-0}" -gt 0 ]; then
+  echo "Clearing $stale file(s) from a previous run:"
+  ls -1 "$OUT" | sed 's/^/  /'
+  rm -f "$OUT"/*.json
+  echo
+fi
+
+# ---- 1. The machine ----------------------------------------------------------
+# The open question the whole budget gate rests on: does this Mac report
+# performance and efficiency cores separately? A runner that does not cannot
+# stand in for the baseline, whatever its core count.
+p_cores=$(sysctl -n hw.perflevel0.logicalcpu 2>/dev/null || echo "")
+e_cores=$(sysctl -n hw.perflevel1.logicalcpu 2>/dev/null || echo "")
+logical=$(sysctl -n hw.logicalcpu 2>/dev/null || echo 0)
+mem_bytes=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
+mem_gb=$((mem_bytes / 1024 / 1024 / 1024))
+chip=$(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo unknown)
+
+topology_json=$(printf '"machine": { "chip": "%s", "logical_cpu": %s, "performance_cores": %s, "efficiency_cores": %s, "memory_gb": %s }' \
+  "$(esc "$chip")" "${logical:-0}" "${p_cores:-0}" "${e_cores:-0}" "$mem_gb")
+
+if [ -z "$p_cores" ]; then
+  record "topology" FAIL "no hw.perflevel0.logicalcpu; asymmetry not observable" \
+    "This machine does not report performance levels, so the Apple Silicon runner cannot describe its own topology." "$topology_json"
+elif [ -z "$e_cores" ] || [ "$e_cores" = "0" ]; then
+  record "topology" FAIL "${p_cores}P + 0E — uniform cores, not the baseline's split" \
+    "$chip reports $p_cores performance cores and no efficiency cores. The baseline is 2P + 4E." "$topology_json"
+else
+  record "topology" PASS "${p_cores}P + ${e_cores}E, ${mem_gb} GB" \
+    "$chip" "$topology_json"
+fi
+
+# ---- 2. Toolchain ------------------------------------------------------------
+if command -v cargo >/dev/null 2>&1; then
+  record "toolchain" PASS "$(rustc --version 2>&1), $(uname -m)" "$(cargo --version 2>&1)"
+else
+  record "toolchain" FAIL "cargo not found" "Install Rust: https://rustup.rs"
+  echo; echo "  cannot continue without a toolchain"; exit 1
+fi
+
+# ---- 3. It builds for arm64 macOS --------------------------------------------
+# GPUI presents through Metal here and Vulkan on Linux, so this is the first
+# real check that the product compiles for the platform it claims to target.
+run_check "build" "workspace compiles" cargo build --workspace --quiet
+
+# ---- 4. Tests ----------------------------------------------------------------
+test_out=$(cargo test --workspace 2>&1)
+test_code=$?
+counts=$(printf '%s' "$test_out" | awk '/^test result/{p+=$4; f+=$6} END{printf "%d passed, %d failed", p, f}')
+if [ $test_code -eq 0 ]; then
+  record "tests" PASS "$counts" "$test_out"
+else
+  record "tests" FAIL "$counts" "$test_out"
+fi
+
+# ---- 5. Architectural boundaries ---------------------------------------------
+run_check "boundary" "gate 1 passes" cargo run --quiet -p gate-boundary
+
+# ---- 6. The shell resolves without a display ---------------------------------
+run_check "shell-smoke" "layout resolves from tokens" \
+  cargo run --quiet -p shell-preview -- --smoke
+
+# ---- 7. The shell renders, and measures itself -------------------------------
+# This opens a real window. It needs a logged-in session, not just SSH.
+measure_json="$OUT/measurements-$RUN_AT.json"
+measure_out=$(cargo run --quiet -p shell-preview -- --measure "$measure_json" 2>&1)
+
+# The run drives 300 inputs and the shell prints how many of them it painted.
+# Requiring only that a file was written let a run report PASS having drawn two
+# frames in two and a half seconds: the file existed, the window was never on
+# screen, and KeystrokeToPaint was absent from every metric that followed. A
+# check that can pass by producing nothing protects nothing.
+#
+# The floor is a third of the inputs, far below a healthy run's near-300 and far
+# above the handful a window that is not drawing manages, so it separates the two
+# without being a judgement about speed.
+painted=$(printf '%s' "$measure_out" | sed -n 's/^measured: \([0-9]*\) input-to-paint samples.*/\1/p' | tail -1)
+painted=${painted:-0}
+if [ ! -s "$measure_json" ]; then
+  record "shell-render" FAIL "no measurements written" \
+    "$measure_out
+
+If this says the window could not open, run it from a logged-in desktop session
+rather than over SSH: GPUI needs a window server."
+elif [ "$painted" -lt 100 ]; then
+  record "shell-render" FAIL "the window did not draw: $painted of 300 inputs painted" \
+    "$measure_out
+
+The shell wrote its measurements, but almost none of the 300 inputs the run drives
+produced a frame. On macOS GPUI draws through the window server, so a window that
+is not on screen never gets asked to. Every input-latency metric is missing from a
+run like this, and the budget gate then refuses for want of KeystrokeToPaint.
+
+Run it from a logged-in desktop session, with the window visible and frontmost --
+not over SSH, not with the window minimised or behind another Space." \
+    "\"inputs_painted\": $painted"
+else
+  record "shell-render" PASS "rendered and reported its own timings" "$measure_out" \
+    "\"measurements_file\": \"$(esc "$measure_json")\", \"inputs_painted\": $painted"
+fi
+
+# ---- 8. Budgets on the authoritative runner ----------------------------------
+budget_out=$(cargo run --quiet -p gate-budget -- --runner apple-silicon --rtt 0 \
+  --report "$OUT/budgets-apple-silicon-$RUN_AT.json" 2>&1)
+budget_code=$?
+case $budget_code in
+  0) record "budgets" PASS "every budget met at 0ms round trip" "$budget_out" ;;
+  2) record "budgets" FAIL "a budget was exceeded" "$budget_out" ;;
+  # Exit 1 is the gate declining to answer, which this used to file as FAIL.
+  # The distinction is the whole point of three exit codes: a breach means the
+  # product is too slow, a refusal means the run could not tell, and reading the
+  # second as the first sends you to optimise something nobody measured.
+  *) record "budgets" REFUSED "could not judge (exit $budget_code)" "$budget_out" ;;
+esac
+
+# ---- 9. Latency injection, which needs sudo ----------------------------------
+# The dnctl and pfctl path has never been run on a Mac. It is the piece most
+# likely to be wrong.
+if [ "$WITH_SUDO" -eq 1 ]; then
+  lat_out=$(sudo cargo run --quiet -p gate-budget -- --runner apple-silicon --rtt 10 \
+    --report "$OUT/budgets-apple-silicon-10ms-$RUN_AT.json" 2>&1)
+  lat_code=$?
+  if [ $lat_code -eq 0 ] || [ $lat_code -eq 2 ]; then
+    record "latency" PASS "a 10ms profile was applied and read back" "$lat_out"
+  else
+    record "latency" FAIL "the 10ms profile could not be applied" "$lat_out"
+  fi
+else
+  record "latency" SKIPPED "needs sudo; re-run with --sudo to include it" \
+    "dnctl and pfctl require privilege. This path has never been run on a Mac and is the one most likely to be wrong."
+fi
+
+# ---- Summary -----------------------------------------------------------------
+echo
+echo "  $passed passed, $failed failed, $refused could not judge, $skipped skipped"
+echo
+echo "Written to $OUT/ (run $RUN_AT):"
+ls -1 "$OUT" | grep -- "$RUN_AT" | sed 's/^/  /'
+echo
+echo "Send it back with:"
+echo "  git add $OUT && git commit -m 'macOS verification: run $RUN_AT' && git push"
+echo
+# A refusal leaves the budgets unverified on the only runner that decides them,
+# so it cannot exit 0. It is not a failure either, hence 1 rather than 2.
+if [ "$failed" -ne 0 ]; then exit 2; fi
+if [ "$refused" -ne 0 ]; then exit 1; fi
+exit 0

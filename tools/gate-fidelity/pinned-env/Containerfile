@@ -1,0 +1,89 @@
+# Pinned rendering environment for gate 8.
+#
+# Capture runs under a headless wlroots compositor rather than a virtual X
+# framebuffer. That is not a preference: GPUI presents a Vulkan swapchain, and on
+# X11 that handoff needs DRI3, which no virtual framebuffer supplies. Wayland
+# presents through wl_shm, which is plain shared memory and needs no DRM device,
+# so software rendering works with nothing but CPU.
+#
+# Versions are pinned because exact comparison requires identical rasterisation:
+# the compositor, the Vulkan software driver and the typefaces all decide pixels.
+# The toolchain matches rust-toolchain.toml. An older one made rustup download
+# the pinned version on every run, inside the environment that is supposed to be
+# fixed.
+FROM docker.io/library/rust:1.98-slim-bookworm
+
+ENV VULCAN_PINNED_ENV=1 \
+    VULCAN_PINNED_ENV_VERSION=3 \
+    WLR_BACKENDS=headless \
+    WLR_RENDERER=pixman \
+    WLR_LIBINPUT_NO_DEVICES=1 \
+    # Debian names lavapipe's manifest with the architecture in it; Ubuntu does
+    # not. This pointed at the Ubuntu name, which does not exist here, and the
+    # Vulkan loader answers a manifest path that is not there by enumerating no
+    # driver at all rather than by failing. GPUI then had no device, the shell
+    # drew nothing, and the capture was a flat colour. The RUN below asserts the
+    # file exists so a rename breaks the build instead of the pixels.
+    VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+
+# Three groups. sway and grim run the session. The runtime libraries are what
+# the product links against, absent at first, so the compositor started and the
+# shell then failed to load and left an empty desktop for the capture — which
+# the comparison faithfully reported as every pixel differing. The build tools
+# are here because the product is compiled inside this image rather than carried
+# in from the host, whose C library is newer than this one's.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      sway \
+      grim \
+      mesa-vulkan-drivers \
+      libvulkan1 \
+      fontconfig \
+      libxkbcommon0 \
+      libxkbcommon-x11-0 \
+      libxcb1 \
+      libxcb-render0 \
+      libxcb-shm0 \
+      libwayland-client0 \
+      libfontconfig1 \
+      build-essential \
+      pkg-config \
+      libxkbcommon-dev \
+      libxkbcommon-x11-dev \
+      libxcb1-dev \
+      libxcb-render0-dev \
+      libxcb-shm0-dev \
+      libwayland-dev \
+      libfontconfig-dev \
+      && rm -rf /var/lib/apt/lists/*
+
+# A default non-root user, because sway refuses to run as root. The uid is not
+# fixed anywhere else: the caller may run this image as any uid, and CI does, so
+# nothing may depend on owning a path baked into the image. The session's
+# runtime directory is created per-uid under /tmp by the entry script, which is
+# the only way to satisfy Wayland's requirement that it be owned by the running
+# user at mode 0700.
+RUN useradd --create-home vulcan
+ENV HOME=/tmp \
+    # Never share the host's target directory. The repository is bind-mounted,
+    # so the container would find binaries built against the host's glibc and
+    # fail to run them against its own — which is what left the compositor
+    # showing an empty desktop for the capture to photograph.
+    #
+    # Inside the mount rather than in /tmp, because the container is discarded
+    # after every run and a target directory in /tmp would mean rebuilding GPUI
+    # from nothing each time. target/ is already untracked.
+    CARGO_TARGET_DIR=/work/target/pinned-env
+
+# Prototype typefaces are vendored in the repository, never fetched.
+COPY mockups/fonts /usr/share/fonts/truetype/vulcan-inter
+COPY mockups/icons /usr/share/fonts/truetype/vulcan-phosphor
+RUN fc-cache -f
+
+# Lavapipe is the only renderer here, and a missing manifest is silent at run
+# time. Fail at build time instead.
+RUN test -f "${VK_ICD_FILENAMES}" \
+    || { echo "lavapipe manifest ${VK_ICD_FILENAMES} is absent; these exist:" >&2; \
+         ls /usr/share/vulkan/icd.d/ >&2; exit 1; }
+
+WORKDIR /work
+USER vulcan

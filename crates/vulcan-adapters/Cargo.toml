@@ -1,0 +1,17 @@
+[package]
+name = "vulcan-adapters"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+
+[package.metadata.vulcan]
+layer = "Adapters"
+
+[dependencies]
+# For getrusage and mach task_info: reading this process's own resource use
+# must not spawn anything, because spawning is itself the work being measured.
+libc = "0.2"
+png = "0.18.1"
+toml = "1.0.7"
+vulcan-app = { path = "../vulcan-app" }
+vulcan-domain = { path = "../vulcan-domain" }

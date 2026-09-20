@@ -1,24 +1,491 @@
+<!--
+SYNC IMPACT REPORT
+Version change: 4.2.0 -> 4.3.0
+Bump rationale: MINOR. A budget is added and an existing one is given the
+definition it always needed.
+
+Added: warm start, 150 ms.
+
+Defined: cold start. The figure was stated without saying what "cold" means, and
+the three readings of it differ by a factor of eight — 92 ms with everything
+cached, 203 ms with the product's own binary evicted, 1568 ms with the whole
+page cache dropped. Until now the gate measured the first of those and called it
+the third. Every cold start this project recorded was a second launch in
+disguise, because the binary was still resident from the build that produced it.
+
+Cold start is now: the product's own files evicted from the page cache, the
+system's left alone. That is what a first launch of the day costs on a machine
+that has been running. Dropping the entire cache measures a machine nobody uses,
+and needs privilege the build does not have; leaving the cache alone measures a
+relaunch. Only this definition is both realistic and available to CI, which is
+what makes it enforceable.
+
+Measured at the baseline's envelope — six cores and 8 GB, cgroup-enforced, on a
+release build — cold start is 203 ms against its 300 ms budget and warm start
+96 ms against 150 ms. The 300 ms figure predates any measurement and turns out
+to be about right; it was the measurement that was wrong, in both directions.
+
+Budgets are measured against a release build. A debug build of this product is
+508 MB against release's 25, and reading the difference off disk is a second of
+cold start that describes the build profile rather than the product.
+
+Modified principles: VI, one budget added and one defined.
+Added sections: none. Removed sections: none. Deferred items: none.
+-->
+
+<!--
+SYNC IMPACT REPORT
+Version change: 4.1.0 -> 4.2.0
+Bump rationale: MINOR. A Principle VI budget is removed. Code compliant before
+is compliant after; what is required has narrowed.
+
+Removed: idle processor, mean over 60 s.
+
+It was set at 1% before anything had been measured, relaxed to 2% a day later on
+the evidence that an empty window of the chosen framework already costs 1.3%,
+and is now removed, because measuring it at all was premature.
+
+What the shell costs while idle says nothing about what the product will cost.
+There is no plugin host, no language server, no indexer, no file watcher and no
+terminal; every one of those will change the idle profile, and several will
+dominate it. A budget calibrated against a shell that only draws is a budget
+calibrated against a program that will not exist.
+
+The measurement was also not trustworthy on the hardware available. It is
+processor time over wall time, so it rises on a slower core for identical work,
+and the only machine it has run on is two to four times faster than the
+baseline. A budget whose figure depends that strongly on where it is taken
+cannot be enforced until it is taken in the right place.
+
+Reinstate it when the product does enough to have a resource profile worth
+constraining, and calibrate it then on hardware of the baseline's class. The
+other twelve budgets are unaffected: each measures work the product already does
+or will clearly do, and each is a property of the code rather than of the
+machine it was measured on.
+
+Modified principles: VI, one budget removed.
+Added sections: none. Removed sections: none. Deferred items: none.
+-->
+
+<!--
+SYNC IMPACT REPORT
+Version change: 4.0.0 -> 4.1.0
+Bump rationale: MINOR. A Principle VI budget is relaxed. Code compliant at the
+old figure is compliant at the new one, so nothing is invalidated, but what is
+required has changed and that is more than a clarification.
+
+Idle processor, mean: 1% -> 2%.
+
+The original figure was set before anything had been measured, so it was an
+aspiration rather than a calibrated target. It is not achievable with the chosen
+user interface framework, and the evidence is that the framework alone costs it:
+
+- An empty GPUI window, containing one element and no product code, idles at
+  1.34%, 1.19% and 1.10% across three runs.
+- The whole Vulcan shell idles at 1.14% to 1.35% on the same machine, and 1.35%
+  to 1.57% on an M3 Pro.
+- The shell draws zero frames across an idle window, so it is not redrawing
+  needlessly; the cost is GPUI's event loop, not work this product does.
+
+The shell therefore adds nothing measurable to the framework's floor, and no
+amount of work on this codebase would reach 1%.
+
+2% rather than a rounder number: it clears the worst observation of 1.57% with
+margin for machine variance, and still fails if anything this product adds on
+top of the framework doubles. A budget set far above the measurement stops being
+a check, which is why 5% was considered and rejected.
+
+This figure is a property of GPUI rather than of Vulcan. If the framework is
+upgraded or replaced, measure again: tools/idle-probe exists to ask exactly this
+question and records its own history.
+
+Modified principles: VI, one budget value.
+Added sections: none. Removed sections: none. Deferred items: none.
+-->
+
+<!--
+SYNC IMPACT REPORT
+Version change: 3.0.1 -> 4.0.0
+Bump rationale: MAJOR. Two constitutions existed in parallel on separate branches
+with no shared history: a product-focused one on the original trunk, and an
+architecture-focused one written during F000. Neither was a draft of the other.
+This merges them, so the document governs both how the product must behave and
+how it must be built.
+
+Carried forward from the original trunk, renumbered and otherwise unchanged:
+- X. The Keystroke Path Is Sacred
+- XI. Snapshots, Cancellation, Versioned Results
+- XII. No Feature Waits on a Server or an Index
+- XIII. Local and Remote Are One Implementation
+- XIV. Extensions Are Data First, Sandboxed Code Second
+
+Reconciled rather than duplicated, because each had a counterpart:
+- Budgets Are CI Gates -> VI. Runs on the Baseline Machine
+- Test-First -> V. Test at the Boundary
+- The Approved Mock Governs the Interface -> VIII. Prototype Fidelity
+- Bounded Footprint on Modest Hardware -> VI. Runs on the Baseline Machine
+
+Corrected: the baseline machine is 6 CPU cores and 8 GB, not the 5 CPUs and
+12 GB the original trunk stated. Every Principle VI budget is measured against
+the corrected figure. One consequential reference inside Principle XIV was
+updated from 12 GB to 8 GB to match.
+
+Modified principles: none of I-IX changed.
+Added sections: principles X through XIV.
+Removed sections: none.
+Deferred items: none.
+-->
+
+<!--
+SYNC IMPACT REPORT
+Version change: 3.0.0 -> 3.0.1
+Bump rationale: PATCH. Principle VIII's requirement is unchanged: departures from the
+signed-off prototype must be recorded and returned to the designer. What changes is where
+one of them lives. Discrepancies now have a single home at `reports/mockups-discrepancies/`
+rather than inside each feature's design document, which resolves a contradiction with the
+F000 specification that had five requirements built on it.
+
+The amendment also separates two concepts that had been drifting together in the
+specification and task artifacts: a prototype extension is a state the mock omits, and a
+discrepancy is something the product cannot match. The first stays in the design document;
+the second moves to its own directory, referenced by path.
+
+Modified principles:
+- VIII. Prototype Fidelity: departure recording split by kind and relocated.
+- I through VII, IX: unchanged.
+
+Added sections: none
+
+Removed sections: none
+
+Deferred items: none.
+-->
+
+<!--
+SYNC IMPACT REPORT
+Version change: 2.3.1 -> 3.0.0
+Bump rationale: MAJOR. Principle VI's resource budgets were replaced wholesale with a
+stricter set, and work that satisfied the previous budgets can fail the new ones. Cold
+start tightens from 3s to 300ms, idle memory from 600MB to 400MB, and the longest
+permitted UI-thread task from 50ms to 8ms. The completion budget is unchanged at 250ms p95
+against an 80ms reference round trip.
+Several new budgets were added that had no previous equivalent.
+
+Modified principles:
+- VI. Runs on the Baseline Machine: budget table replaced; the baseline machine is now
+  named as a 6-core, 8 GB reference of A18 Pro class, and the frame budget is stated at
+  120Hz rather than 60Hz.
+- I through V, VII through IX: unchanged.
+
+Added sections: none
+
+Removed sections: none
+
+Deferred items: the budgets originate from an architecture document that has since been
+deleted from the repository. They are transcribed here so the numbers survive their
+source, and this constitution is now their only home.
+-->
+
+<!--
+SYNC IMPACT REPORT
+Version change: 2.3.0 -> 2.3.1
+Bump rationale: PATCH. Two clarifications that change no requirement. The feature map's
+location moved from `docs/feature-map.md` to `specs/features-map.md`, alongside the
+specification directories it sequences, and gate 9's enforcement is now automated rather
+than deferred, so the text describing it as manual is corrected.
+
+Modified principles: none. Principle IX's requirements are unchanged; only the path it
+names and the description of how the gate is enforced were updated.
+
+Added sections: none
+
+Removed sections: none
+
+Deferred items: none.
+-->
+
 # Vulcan Constitution
-
-Vulcan is a desktop IDE with IntelliJ's look, feel, and workflow richness, built to be
-measurably snappier than every current alternative when editing any language, locally or
-against a remote machine, on a 5-CPU / 12 GB laptop running macOS, Linux, or Windows, with a
-plugin system architected from day one.
-
-This constitution governs how that claim is kept. Its evidence base is `vulcan-system-design.md`;
-each principle cites the sections it derives from.
-
-Where this document and the design doc disagree, the disagreement is a defect in one of them and
-MUST be resolved explicitly rather than by silent deference. On **obligations** — what is
-required, forbidden, budgeted, or gated — this document governs. On **facts** — measurements,
-arithmetic, and the documented behaviour of reference implementations — the design doc governs,
-and a principle that contradicts an established fact MUST be corrected here rather than
-enforced. On **interface** — appearance, layout, and interaction — the approved mock at
-`mockups/Vulcan IDE.html` governs, within the limits Principle IX sets.
 
 ## Core Principles
 
-### I. The Keystroke Path Is Sacred (NON-NEGOTIABLE)
+### I. Domain Independence (NON-NEGOTIABLE)
+
+Dependencies MUST point inward only: adapters depend on the application layer, the
+application layer depends on ports and the domain, and the domain depends on nothing
+outside itself. Code under `domain/` MUST NOT import web frameworks, ORMs, HTTP or
+queue clients, vendor SDKs, serialization annotations, or dependency-injection
+containers. Code under `application/` MUST NOT import concrete adapter modules; it
+may import only domain types and port interfaces.
+
+Rationale: the direction of dependency is the whole architecture. Once an entity
+imports an ORM base class or a use case imports a framework request type, the
+business rules can no longer be read, tested, or moved without the infrastructure
+that surrounds them. This rule is stated as an import constraint precisely so it can
+be enforced mechanically rather than argued case by case in review.
+
+### II. Every Side Effect Is a Port
+
+Every interaction with the outside world MUST be expressed as an outbound port
+interface declared in the application layer and implemented by an adapter. This
+includes persistence, HTTP and RPC calls to other systems, message publication,
+file and blob access, and the ambient dependencies that make tests nondeterministic:
+clock, random, UUID generation, and environment configuration. Ports MUST be named
+for the capability they provide, never for the technology behind them
+(`OrderRepositoryPort`, not `PostgresPort`).
+
+Rationale: a side effect that has no port cannot be faked, which means the use case
+that performs it cannot be unit tested and the technology behind it cannot be
+replaced. Naming ports after capabilities keeps the vendor swappable; naming them
+after vendors re-couples the core to the infrastructure through the interface itself.
+
+### III. Use Cases Own Orchestration
+
+Each use case MUST expose a single behavior with an explicit input type and an
+explicit output type, both of which are plain data owned by the application layer.
+Inbound adapters (HTTP handlers, CLI commands, queue consumers, schedulers) MUST
+translate protocol payloads into use-case input and translate use-case output and
+errors back into protocol form, and MUST NOT contain business branching, persistence
+calls, or cross-service coordination. Use cases MUST NOT receive framework request,
+response, session, or job-metadata objects, and MUST NOT return raw database rows or
+vendor response objects. Infrastructure errors MUST be translated into domain or
+application errors at the adapter boundary.
+
+Rationale: when orchestration lives in a controller, the same behavior cannot be
+reached from a second transport without duplication, and the business rules become
+reachable only by booting the framework. Explicit input and output types are what
+make a use case addressable from HTTP, CLI, a worker, and a test alike.
+
+### IV. Explicit Composition Root
+
+Concrete adapters MUST be bound to use cases in a single composition root per
+deployable unit, and that wiring MUST be readable as ordinary code. Service locators,
+ambient global singletons, and runtime container lookups from inside domain or
+application code are prohibited. Use cases MUST receive their ports through
+constructor or function parameters.
+
+Rationale: the composition root is the one place where the architecture's seams are
+visible. Spreading wiring across dozens of decorated classes hides which
+implementation is actually live, makes substitution in tests unreliable, and lets
+infrastructure concerns leak back into the core through the container.
+
+### V. Test at the Boundary (NON-NEGOTIABLE)
+
+Tests MUST be written against the same boundaries the architecture defines:
+
+- Domain rules are tested as pure functions and values, with no mocks and no
+  framework bootstrap.
+- Use cases are tested with in-memory fakes for their outbound ports, asserting
+  business outcomes.
+- Each outbound port has one shared contract test suite, executed against every
+  adapter implementing that port, including the in-memory fake.
+- Adapters are integration tested against real infrastructure for serialization,
+  schema and query behavior, timeouts, and retries.
+- User-facing capabilities are covered end to end through a real inbound adapter.
+
+In the common vocabulary, the unit tier is the domain and use-case tests, the
+integration tier is the adapter tests plus the port contract suites, and the
+end-to-end tier is a real inbound adapter driving real outbound adapters.
+
+Every change that adds or modifies behavior, whether a new feature or an enhancement to
+an existing one, MUST carry its tests in the same change, at every tier the change
+touches:
+
+- behavior added or changed in domain or application code requires unit tests;
+- an adapter, schema, query, or external contract added or changed requires integration
+  tests, including an update to the affected port contract suite;
+- a user-facing capability added or changed requires at least one end-to-end test
+  covering its primary success path, with failure and edge behavior pushed down to the
+  cheaper tiers.
+
+Omitting a tier is permitted only when that tier does not apply to the change, and the
+pull request MUST name the omitted tier and the reason. "Tests to follow" is not a
+reason, and a follow-up ticket does not substitute for the tests.
+
+Modifying code that has no tests MUST begin by adding characterization tests that pin
+current observable behavior, before the modification is made.
+
+Domain and use-case code MUST be developed test-first: a failing test precedes the
+implementation. Tests MUST assert observable behavior, not internal call sequences,
+except where a port interaction is itself the specified outcome.
+
+The unit tier MUST complete in under 2 minutes on the baseline machine defined in
+Architectural Constraints, and the full suite MUST be runnable there. A suite that only
+runs on CI hardware is treated as a budget breach under Principle VI.
+
+Rationale: the contract-test rule is what keeps the in-memory fake honest; without it
+use-case tests drift into passing against a fake that no real adapter matches. TDD is
+mandated only for the two layers where the cost of a wrong rule is highest and the cost
+of writing a test first is lowest, since neither layer requires infrastructure to run.
+Tests are required in the same change because tests written afterwards are written
+against the implementation instead of the requirement, inherit its misreadings, and in
+practice frequently never arrive. End-to-end coverage is required per user-facing
+capability but deliberately limited to the primary path, because that tier is the
+slowest and most failure-prone: one test per capability catches wiring and composition
+errors that no lower tier can see, while depth at that tier buys flakiness rather than
+confidence. Characterization tests come first when touching untested code because
+without them a refactor cannot be distinguished from a behavior change.
+
+### VI. Runs on the Baseline Machine
+
+Every desktop deliverable MUST remain fully usable on the baseline machine defined in
+Architectural Constraints, and MUST be measured there rather than on developer
+hardware. The resource budgets in that section are limits, not targets: a change that
+pushes any metric past its budget MUST NOT merge until it is brought back under, or an
+exception is recorded under the complexity rule in Governance.
+
+Hardware acceleration, background indexing, local model inference, prefetching, and
+similar accelerants MUST be optional. Each MUST have a functional degraded path that
+keeps the product usable when the capability is absent, disabled, or starved, and the
+degraded path MUST be exercised by tests rather than assumed.
+
+Work that would occupy the UI thread for longer than one frame MUST be
+moved off it and reached through an asynchronous outbound port, so that the boundary
+that makes the work testable is also the boundary that keeps the interface responsive.
+Caches and queues MUST have explicit bounds and eviction rules; unbounded growth is
+treated as a defect regardless of whether it manifests on a developer machine.
+
+Rationale: 8 GB is the whole machine's budget, not the application's. The operating
+system, a browser, and a chat client are resident before the product starts, so an
+application that measures fine in isolation can still make the machine unusable. A 64 GB
+workstation hides every regression of this class until a user finds it, and by then the
+cause is dozens of commits back. Fixed budgets measured under baseline constraints turn
+"it feels fine" into a number that CI can fail on, which is the only form of performance
+requirement that survives delivery pressure.
+
+### VII. Design Before Code
+
+Every feature, and every enhancement that changes a boundary, MUST have a committed
+architecture document under `docs/system-designs/` before its first implementation
+commit. The document MUST cover both levels: the high-level design, which states how the
+feature sits in the system, and the low-level design, which states the domain model,
+ports, use cases, and adapters the implementation will create. Required contents are
+listed in Development Workflow and Quality Gates.
+
+Enhancements to an existing feature MUST update that feature's existing document rather
+than add a second one. Documents are superseded in place and annotated, never silently
+replaced or deleted, so that the reasoning behind the current shape stays recoverable.
+
+When implementation reveals that the design is wrong, work MUST stop, the document MUST
+be corrected in the same change that departs from it, and the departure MUST be visible
+in review. A design document that no longer matches the code is worse than none, because
+it is trusted.
+
+Rationale: the boundaries this constitution mandates in Principles I through IV are
+cheap to draw before code exists and expensive to move afterwards. Writing down the
+ports and the use cases first is the only point at which a reviewer can object to a
+boundary without asking for a rewrite. The two levels are both required because they
+fail differently: a high-level design alone hides the coupling that appears when
+signatures are written, and a low-level design alone hides the system-level consequence
+of the feature. The stop-and-correct rule exists because the common failure is not
+designing badly, it is designing well and then diverging silently under delivery
+pressure, which converts the document into misinformation.
+
+### VIII. Prototype Fidelity
+
+`mockups/Vulcan-IDE.html` is the signed-off reference for the product's appearance and
+interaction. Where an implementation and the prototype disagree on how the product
+looks or behaves at the surface, the prototype wins and the implementation changes.
+
+The prototype is authoritative for layout, spacing, typography, color, iconography, the
+component states it draws, and the interaction affordances it demonstrates. It is not
+authoritative for anything behind the surface: architecture, module structure, data
+shapes, and technology remain governed by Principles I through IV and by `plan.md`. A
+prototype is a picture of the outside of the system and MUST NOT be read as instructions
+for the inside of it.
+
+The file is under change control. It MUST NOT be edited to accommodate an implementation
+shortcut. Any change requires recorded designer and stakeholder approval, and the
+superseded version MUST be retained so that what was signed off remains recoverable.
+
+The prototype's CSS custom properties are the design system: the `--color-*`, `--font-*`,
+`--space-*`, `--radius-*`, and `--shadow-*` families are the single source of design
+values. Implementation MUST consume tokens extracted mechanically from the prototype and
+MUST NOT hardcode literal colors, spacing, radii, or shadows. Extraction MUST be a script
+that can be re-run, so that a prototype change surfaces as a token diff instead of as a
+visual surprise. Every asset the prototype's appearance depends on MUST be vendored into
+the repository; the shipped product MUST NOT fetch fonts, icons, or images from a network
+to look correct.
+
+The prototype does not define every state. It composes one viewport, one theme, and the
+states it happens to draw. Loading, empty, error, overflow, disabled, focus, window
+resizing, and any additional theme are undefined by it. Undefined cases MUST be derived
+from the existing token system, recorded in the feature's design document under a
+prototype extensions heading, and submitted for sign-off. Introducing a design value that
+is not in the token system is prohibited.
+
+Where fidelity conflicts with another principle, the order of precedence is fixed:
+
+1. Accessibility floor. Contrast, focus visibility, keyboard operability, and assistive
+   technology support MUST meet WCAG 2.2 AA. Where the prototype falls below the floor,
+   the implementation meets the floor and the deviation returns for re-sign-off.
+2. Resource budgets. Where fidelity cannot be achieved within the Principle VI budgets on
+   the baseline machine, the budgets win. Degradation MUST be confined to effects such as
+   shadows, transitions, and animation, and MUST NOT alter layout, type scale, or color.
+3. Prototype fidelity, over any implementation convenience or individual preference.
+
+Two kinds of departure are recorded, and they are not the same thing:
+
+- A **prototype extension** is a state the prototype does not depict, such as an empty or
+  error condition, a second theme, or a window size it does not compose. It is designed from
+  the existing token system and recorded in the feature's design document, as stated above.
+- A **discrepancy** is something the product cannot match, permitted by the ladder above. It
+  is recorded as one document under `reports/mockups-discrepancies/`, stating what was being
+  matched, why it cannot be, and the alternatives available. Each is triaged individually
+  into either a backlog entry or an accepted difference, and a feature's design document
+  references it by path rather than restating it.
+
+Either kind, unrecorded, is a defect. A discrepancy left untriaged at review time is a
+blocking finding, and loosening the comparison is never a resolution.
+
+Rationale: a signed-off prototype is a contract with people who are not in the code
+review, and the normal way that contract breaks is not a decision to break it but a
+thousand small approximations, each defensible alone. Tokens extracted by script and
+compared automatically are what make those approximations visible while they are still
+cheap. The precedence ladder exists because sign-off cannot ratify an interface that
+excludes users with disabilities, and because a faithful interface that misses the
+resource budgets is unusable on the hardware this product targets. Naming the order in
+advance prevents the question being relitigated per feature under delivery pressure.
+
+### IX. The Feature Map Governs Sequence
+
+`specs/features-map.md` is the ordered backlog and the only authority on what may be worked
+on next. Features carry an immutable identity of the form `F<NNN>` and a position in the
+file. The number identifies the feature for all time; the position states where it falls
+in the build order.
+
+Checkboxes are evidence, not intention. A subfeature box MUST NOT be checked until that
+slice is merged with its tests passing. A feature box MUST NOT be checked until every one
+of its subfeatures is checked, its specification and design document exist, and gates 1
+through 8 are green for it. Checking a box that these conditions do not support is a
+defect of the same severity as a failing gate, because every later sequencing decision
+reads those boxes as fact.
+
+Before a feature is specified, every feature it declares as a dependency MUST be fully
+checked. The precondition is the declared dependencies, not every entry positioned above
+it: features marked `[P]` are declared independent of one another, and serialising them
+would cost schedule without reducing risk. When `/speckit-specify` is invoked without a
+feature identifier, the feature to specify is the first unchecked feature in file order
+whose declared dependencies are all checked.
+
+When a precondition is unmet, work stops. The blocking feature MUST be named and no
+specification directory is created. Starting a feature whose dependencies are incomplete
+produces a specification written against assumptions that the missing work has not yet
+validated.
+
+Feature numbers are never renumbered and never reused. A feature inserted into the middle
+of the sequence takes the next unused number and is placed at its correct position in the
+file; a feature that is dropped is struck with a recorded reason rather than deleted.
+
+Rationale: the backlog only functions as a coordination artifact if its state is
+trustworthy and its identifiers are stable. Renumbering on insertion would invalidate
+every reference held by specification directories, design documents, commit messages and
+review threads, in exchange for the cosmetic property of numbers ascending down the page;
+separating identity from position costs one sentence of convention and keeps every
+reference valid forever. Binding the checkboxes to the gates rather than to a judgement
+of progress is what stops the map from becoming an optimistic summary, which is the
+normal way a tracking document stops being consulted.
+
+### X. The Keystroke Path Is Sacred (NON-NEGOTIABLE)
 
 Nothing crosses a process boundary, a network boundary, or a lock that a background thread can
 hold, between a key event and the pixel it produces. The path does exactly three things: mutate
@@ -44,7 +511,7 @@ with the language held constant. Hot-path discipline is the single largest lever
 it is an architectural property that cannot be recovered by optimization later. (§5.1, §10, §11,
 §19.1)
 
-### II. Snapshots, Cancellation, Versioned Results
+### XI. Snapshots, Cancellation, Versioned Results
 
 The UI thread owns the truth. Every other consumer — syntax, indexer, diff, search, LSP/DAP
 clients, extensions, the remote agent — works on immutable copies.
@@ -68,7 +535,7 @@ onto the wrong line after an insertion above. A documented Neovim bug froze the 
 a ~2,000-item references response solely because the transformation ran on the main thread.
 (§9.1, §10, §14.3)
 
-### III. No Feature Waits on a Server or an Index
+### XII. No Feature Waits on a Server or an Index
 
 Language intelligence is advisory. The editor MUST remain fully usable at any server latency,
 including infinite, and at any index completeness, including zero.
@@ -91,66 +558,7 @@ property. Tree-sitter in-process for syntax and LSP/DAP out-of-process for seman
 only if the editor genuinely never gates on the out-of-process half. (§9.5, §9.6, §13, §17.4,
 §18)
 
-### IV. Test-First (NON-NEGOTIABLE)
-
-Behaviour is specified as a failing test before it is implemented: red, then green, then refactor,
-with the red observed rather than assumed.
-
-- Every feature MUST open with the three tests its specification columns imply (see *Development
-  Workflow and Quality Gates*): a latency assertion against its budget, a cold-index test proving
-  the feature works with nothing indexed, and a remote-mode test proving it works across the agent
-  boundary. A feature whose three columns are filled but whose three tests are missing has not
-  been started.
-- The test MUST be run and seen to fail, for the intended reason, before implementation begins. A
-  test that has never failed has demonstrated nothing.
-- Every bug fix MUST open with a regression test that reproduces the defect against the unfixed
-  code.
-- The failure modes in `vulcan-system-design.md` §18 are a standing automated matrix, not a manual
-  checklist: server crash, server hang, oversized file, remote disconnect mid-edit, agent crash,
-  agent version mismatch, misbehaving extension, and IDE crash recovery. Each MUST assert both
-  that no typed text is lost and that the UI stays responsive.
-- The Principle II invariants MUST be asserted mechanically rather than by inspection: that
-  background work receives snapshots and never live references, that every result carries the
-  version it was computed against, that stale results are discarded or anchor-mapped, and that
-  cancellation actually fires on edit.
-- Tests MUST pass on macOS, Linux, and Windows. Passing only on the development platform is not
-  passing.
-
-**Scope.** Test-first governs all logic: buffer and anchors, the display map, keymap resolution
-and command dispatch, the VFS and indexer, LSP and DAP client behaviour, the remote channel codec,
-and extension host policy. It does not govern the rendering leaf (glyph rasterization, GPU
-submission) or OS input plumbing (IME composition, window management), where correctness is
-established instead by golden-image comparison, the latency harness of Principle V, and named
-manual platform checks. These exemptions MUST be narrow and enumerated in the plan. "Hard to test"
-is not an exemption; "not expressible as an assertion" is, and it is rare.
-
-**Rationale:** Every guarantee this constitution makes is invisible when it holds and reproducible
-only under timing that is impractical to hit by hand — a stale result landing three keystrokes
-late, a cancellation that silently did not fire, an anchor drifting after an insertion above, a
-disconnect during an unsaved edit. Clicking around cannot find these; they are indistinguishable
-from correct behaviour until a user hits one. Writing the test first is what forces the invariant
-to be stated in a form a machine can check, and Principle V already establishes that this project
-gates on machine-checked properties rather than on review. (§10, §18, §19.2)
-
-### V. Budgets Are CI Gates, Not Aspirations
-
-Performance that is "felt" drifts a millisecond at a time. Vulcan measures instead.
-
-- Keystroke-to-paint and frame timing MUST be instrumented from the first spike, using
-  Typometer-style measurement.
-- The budgets in `vulcan-system-design.md` §16 are binding. A p99 regression against them MUST
-  fail CI. It is not a review discussion.
-- Latency MUST be reported at p99 and p999, never as a mean alone. Jitter is as damaging as
-  the mean, and a 3 ms mean with 80 ms spikes feels worse than a steady 8 ms.
-- Remote-mode budgets MUST be verified under simulated latency and loss (`tc netem` or Network
-  Link Conditioner) at a representative RTT, not on a localhost agent alone.
-- Per-server memory and CPU MUST be observable by the user at runtime, not only in tests.
-
-**Rationale:** §16's table is written as design constraints. Without an automated gate the
-budgets become documentation, and the product's one differentiating claim erodes invisibly.
-(§5.6, §5.8, §16, §19.2)
-
-### VI. Local and Remote Are One Implementation
+### XIII. Local and Remote Are One Implementation
 
 Remote development is not a mode bolted onto a local IDE. It is the same code, running headless.
 
@@ -176,33 +584,7 @@ Remote development is not a mode bolted onto a local IDE. It is the same code, r
 independently. Reusing the local concurrency model for remote means remote mode adds no new
 correctness surface, and it is what makes a small client machine viable. (§14)
 
-### VII. Bounded Footprint on Modest Hardware
-
-The target machine is 5 CPUs and 12 GB, and the IDE does not get 12 GB. After the OS, a browser,
-and container tooling, everything the IDE owns fits in roughly 4–5 GB — most of which belongs to
-language servers and build daemons, not to Vulcan.
-
-- The Vulcan process MUST stay within roughly 500 MB idle and roughly 1 GB with a medium project
-  open. In remote mode the client MUST stay at or under 500 MB.
-- Lazy by default: language servers start on the first file of their language, never on project
-  open, and stop after an idle timeout. Grammars, themes, and extensions load on first use.
-- Every cache MUST have an explicit ceiling and an eviction policy — glyph atlas, shaped-text
-  cache, buffer snapshots, indexes. "Grow until OOM" is prohibited.
-- Trigram and symbol indexes MUST be memory-mapped files on disk, so they cost page cache rather
-  than heap and survive restart.
-- Anything unbounded MUST stream: search results, references, diagnostics, file trees, workspace
-  symbols. A 50k-item result MUST NOT be materialized to display 40 rows.
-- The background pool MUST be small and low priority (`max(2, cores − 2)`, sized from efficiency
-  cores on heterogeneous parts, at background/utility QoS). Indexing MUST throttle on battery and
-  under load. Indexing that takes 40 s instead of 20 s is invisible; a stuttering cursor is not.
-- Nothing polls and nothing animates continuously. An idle Vulcan MUST draw no frames.
-
-**Rationale:** Footprint matters less for its own sake than because a bloated process means cache
-misses and eventually paging, which surfaces as tail latency — a Principle I violation by another
-route. This budget is also the decisive argument for the native core in §6.3. (§17.1, §17.2,
-§14.8)
-
-### VIII. Extensions Are Data First, Sandboxed Code Second
+### XIV. Extensions Are Data First, Sandboxed Code Second
 
 The extension architecture is built in milestone 1; the public API is frozen and published only
 after Vulcan's own features ship through it.
@@ -224,184 +606,223 @@ after Vulcan's own features ship through it.
   any third party sees the API.
 
 **Rationale:** IntelliJ's in-process JVM plugins buy unmatched depth and cost the ability to
-guarantee anything about latency or memory. On a 12 GB machine, isolation is the correct trade.
+guarantee anything about latency or memory. On an 8 GB machine, isolation is the correct trade.
 Dogfooding the API before publishing it is the only way to avoid guessing at its shape.
 (§9.11, §17.5)
 
-### IX. The Approved Mock Governs the Interface
+## Architectural Constraints
 
-`mockups/Vulcan IDE.html` has been approved by the UI designer and by stakeholders. It is the
-source of truth for Vulcan's interface. UI work resolves against it, not against individual
-judgement.
+Every new project, service, or deployable in this repository MUST be scaffolded as
+Ports and Adapters before the first feature is implemented. Retrofitting boundaries
+after delivery pressure arrives is explicitly out of policy.
 
-- Every UI and UX decision MUST be resolved by consulting the mock first. Where it shows an
-  answer — layout, spacing, typography, colour, iconography, information architecture,
-  interaction affordance, or wording — that answer is the specification. An implementation that
-  departs from it is a defect, whether or not the departure looks better.
-- The mock's authority covers **appearance and interaction only**. It does not govern
-  architecture, performance, or whether a feature exists; those remain with Principles I–VIII and
-  `vulcan-system-design.md`. Where a mocked interaction could only be built by violating
-  Principle I, **Principle I wins** and the interaction goes back to the designer rather than
-  being implemented as drawn.
-- Where the mock is **silent** — and it will be, since it depicts ten regions of a much larger
-  product — the interface MUST be extended by analogy from what the mock does establish: the
-  Nocturne token set, its spacing and type scale, and its existing component patterns. Inventing
-  a second visual language is prohibited, as is guessing at a pattern the mock already answers
-  somewhere else.
-- The mock contains material that is **not product**, and it MUST NOT be implemented as
-  features: placeholder content (the `payments-platform` workspace, `OrderService.java`, the
-  sample diagnostics and terminal output) and mockup scaffolding (the "Spec pins" toggle, which
-  exists to annotate the mock with § references). Where it is unclear whether an element is
-  specification or scaffolding, that is a question for the designer, not a developer's call.
-- Changing the mock is a **design decision, not an implementation decision**. Because it carries
-  designer and stakeholder approval, a developer MUST NOT edit it to match what was built. A
-  needed change goes back through the designer and the mock is re-approved.
-- Practical note: the file is a bundle, not editable HTML. The application lives in the
-  `__bundler/template` script element and must be unpacked before it can be read; in packed form
-  it cannot be meaningfully diffed or hand-edited.
+Modules MUST be organized feature-first, with layer folders nested inside each
+feature rather than the reverse:
 
-**Rationale:** An interface assembled from many individually reasonable local decisions does not
-converge on a coherent product — it converges on drift. The mock exists so those decisions were
-made once, together, by the people accountable for them; treating it as advisory would hand every
-one of them back to whoever happens to be implementing that screen. The narrow scoping matters as
-much as the authority: a mock cannot know what a latency budget costs, so it governs what the
-interface looks like and how it responds, never what the machine underneath is permitted to do.
+```text
+src/
+  features/
+    <feature>/
+      domain/
+      application/
+        ports/
+          inbound/
+          outbound/
+        use-cases/
+      adapters/
+        inbound/
+        outbound/
+      composition/
+```
 
+Rationale: feature-first grouping keeps a vertical slice deletable and reviewable in
+one place; layer-first grouping scatters a single change across the tree and makes
+boundary violations harder to see in a diff.
 
-## Technology and Platform Constraints
+Language mappings preserve the same boundaries and differ only in syntax and wiring:
+TypeScript uses interfaces plus explicit factory functions; Java and Kotlin use
+`domain`, `application.port.in`, `application.port.out`, `application.usecase`,
+`adapter.in`, `adapter.out` packages with constructor injection; Go uses small
+interfaces owned by the consuming application package with wiring in `cmd/<app>`.
 
-**Architecture (binding).** Vulcan is a single process, GPU-rendered with damage tracking, with
-an in-process text model and cheap snapshots. Semantics and debugging are out-of-process behind
-LSP and DAP; there is no bespoke per-language semantic engine. These are not stack choices —
-they follow directly from Principles I, II, and III, and changing any of them requires amending
-those principles.
+Cross-feature access MUST flow through a published port or use case of the owning
+feature. Direct imports of another feature's `domain/` or `adapters/` are prohibited.
 
-**Stack constraints (binding).** Whatever implementation stack is selected MUST satisfy all of:
+Adapters MUST NOT call other adapters directly; a flow that needs two side effects
+belongs in a use case that depends on both ports.
 
-- No garbage collector or runtime pause on the keystroke path, and no pause class that can
-  exceed the Principle I budget.
-- A deterministic process footprint that meets Principle VII on the target hardware.
-- GPU rendering with damage tracking and a glyph atlas, on Metal, DirectX, and Vulkan.
-- First-class support on macOS, Linux, and Windows — not a primary platform plus two ports.
-- An incremental, error-tolerant syntax layer that re-parses only the edited region, is driven by
-  per-language data rather than host code, and can supply highlighting, folding, indentation, and
-  in-file symbols with no built index and no language server running.
-- The ability to spawn and supervise LSP and DAP server processes on all three platforms.
-- A compact binary wire format for the remote channel that decodes off the UI thread.
+Legacy or non-conforming code MUST be migrated by vertical slice using a strangler
+approach: wrap the existing behavior behind an outbound port, add characterization
+tests, move orchestration into a use case, then route the old entry point through it.
+Full rewrites are prohibited, because they replace verified behavior with unverified
+behavior in a single step.
 
-**The stack selected against these constraints is recorded in the implementation plan and its
-architecture decision records, not here.** It MAY change without amending this constitution,
-provided every constraint above still holds and the §19.3 thresholds in `vulcan-system-design.md`
-are respected. The current selection — Rust, Floem/wgpu, a summary-node rope, tree-sitter,
-protobuf-over-SSH, `wasmtime` — lives in `docs/adr/0001-technology-stack.md`.
+**Baseline machine.** All performance claims and gates refer to a machine with 6 CPU
+cores, 8 GB RAM, integrated graphics with no discrete GPU, an SSD, and a 120Hz display.
+The reference is hardware of A18 Pro class, whose six cores are asymmetric: two
+performance cores and four efficiency cores. Work scheduled as though six equal cores were
+available will not meet these budgets, so parallelism assumptions MUST be stated and
+measured rather than assumed. Measurement MUST
+occur on that hardware or on a VM or container constrained to it (CPU quota and memory
+limit applied, not merely requested), with the application under a realistic workload
+rather than an empty project.
 
-**Rejected, and not to be re-proposed without a Governance amendment:** any RPC boundary between
-keystroke and glyph; Electron or Tauri; C or C++ pursued for a presumed latency win over Rust
-(no measurable advantage exists for this workload); Zig (no mature GUI toolkit, no reference
-implementation); a JVM core (ruled out on the §17.1 footprint budget — not on GC pauses, which
-Generational ZGC has settled).
+**Resource budgets.** Values apply to the sum of all processes the application owns:
 
-**Cross-platform (macOS, Linux, Windows):**
+| Metric | Budget |
+| --- | --- |
+| Keystroke to paint | 8 ms p99 |
+| Scroll tick to paint | 8 ms p99 |
+| Longest task on the UI thread | 8 ms |
+| Highlight update after an edit | 16 ms, off the UI thread |
+| Cold start to a rendered file | 300 ms, the product's own files evicted from the page cache |
+| Warm start to a rendered file | 150 ms, a relaunch with everything cached |
+| Fuzzy file open across 100,000 files | 50 ms per query |
+| Project text search, first results | 500 ms |
+| Completion popup | 250 ms p95 end to end, at a round trip of 80 ms or less, never blocking |
+| Diagnostics after a typing pause | 300 ms to 2 s, never blocking |
+| Idle resident memory | 400 MB |
+| Resident memory, typical session | 1.5 GB |
+| Resident memory, peak | 2.5 GB |
 
-- All three platforms MUST be in CI from the first commit. Cross-platform is where hobby IDEs
-  die, and it is decided on day one or not at all.
-- `#[cfg(target_os)]` MUST NOT appear outside the `platform` module. Everything above that module
-  is platform-agnostic.
-- Text input and IME (CJK composition, dead keys, macOS press-and-hold) MUST be designed in from
-  the start. Retrofitting it is a known late-stage rewrite.
-- HiDPI and fractional scaling MUST be tested explicitly at 125% and 150%.
+The 8 ms figures are one frame at 120Hz: a task that exceeds them drops a frame, which is
+what the product's central claim of being measurably snappier rests on. Cold start excludes
+indexing, plugin activation and language servers, none of which may block a file being
+rendered. It is measured with the product's own binary dropped from the page cache and the
+system's left resident, which is what a first launch of the day costs; measuring with
+everything cached reports a relaunch, and dropping the whole cache reports a machine nobody
+uses. Both start figures are taken against a release build, since that is what ships. The completion budget is stated end to end against a reference round trip of 80 ms,
+which leaves 170 ms for the client, serialisation, server work and render combined. It is
+stated that way rather than as an absolute figure because the language server is frequently
+on another machine, and no architecture beats the propagation delay to it.
 
-**Non-goals for v1:** a public plugin marketplace; a bespoke per-language semantic engine
-(IntelliJ's PSI); AI features; and any feature that adds a step to the keystroke path.
+The peak memory budget is set so that at least 5 GB remains for the operating system and
+other applications on an 8 GB machine; it is the reason the figure is not simply "as much
+as is free". Installed disk footprint MUST be reported per release and justified when it
+grows, since low-specification machines are frequently also storage-constrained.
 
-**Acknowledged ceiling:** an LSP-based IDE is as deep as its servers. Vulcan will not match
-IntelliJ's deepest cross-file, type-aware refactorings, and the product framing MUST be honest
-about it: *IntelliJ-rich workflow, Zed-fast editor, LSP-deep semantics.* This ceiling is
-structural and accepted deliberately.
+Collections rendered in the interface MUST be virtualized or paginated when their size is
+unbounded by input. Polling loops, watchers, and animations MUST stop when the window is
+hidden or the application is idle, because the idle CPU budget is what determines whether
+the machine stays responsive for everything else the user is running.
 
 ## Development Workflow and Quality Gates
 
-**Every feature specification MUST carry three columns** before it is accepted:
+`plan.md` is the sole source of the technology stack for a feature. Specifications
+describe what and why and MUST remain free of stack choices; adapter technology is
+chosen at plan time and MUST NOT appear in domain or application code.
 
-1. **Latency budget** — the §16 target this feature is held to.
-2. **Works while indexing** — what the feature does before the index is built (Principle III).
-3. **Works remote** — how many network round trips it costs, and what it shows before they
-   return (Principle VI).
+Design documents live at `docs/system-designs/<NNN>-<feature-slug>.md`, where `<NNN>` is
+the feature number used by the specification for the same feature, so that the design,
+the spec, and the plan for one feature are correlatable by name.
 
-A feature that cannot fill all three columns is not specified yet, and a feature whose three
-columns have no corresponding failing tests has not been started (Principle IV). The columns
-and the tests are the same statement written twice — once for the reader, once for CI.
+Three artifacts govern a feature and MUST NOT duplicate each other:
 
-**Stage gates.** Work proceeds through the §19.2 stages, and a stage is not complete until its
-gate is measured and passing:
+- `spec.md` states what the feature does and why, and MUST remain free of stack and
+  structure choices.
+- The design document states how the system is shaped: boundaries, ports, use cases,
+  domain model, data flow, and failure behavior.
+- `plan.md` states how the work is built and remains the sole source of the technology
+  stack. Where the design document and `plan.md` disagree about technology, `plan.md`
+  wins and the design document MUST be corrected in the same change.
 
-| Stage | Gate | Source |
-|---|---|---|
-| 0 — spike | p99 keystroke-to-paint under ~10 ms, ideally under one 120 Hz frame (8.3 ms); idle RSS under 200 MB; all three OSes | §19.2 |
-| 1 — edit and navigate | Typing latency does not regress while the language server is indexing; per-server memory visible in a resource panel | §19.2 |
-| 2 — debug it remotely | Identical keystroke latency local and remote; completion within RTT + 50 ms at a simulated 80 ms RTT with 1% loss; forced disconnect mid-edit loses nothing and does not restart the language server | §19.2 |
-| 3 — commit from it | Typing holds its budget while the background diff recomputes on a 50 000-line file; commit, branch, and merge-conflict resolution complete without leaving the IDE, local and remote; local history restores a prior state of a file with git uninvolved | §9.9, §17.4 |
-| 4 — plugins | Vulcan's own Java pack, theme, and keymap run through the public extension system with no host-code special case; a deliberately hung extension is killed and reported without the UI missing a frame; per-extension memory and CPU appear in the resource panel | §17.5 |
+The design document MUST NOT restate the stack; it references `plan.md` for that.
 
-§19.2 states gates only for Stages 0–2. The Stage 3 and Stage 4 gates above are derived from the
-obligations those stages inherit — §9.9's off-thread diff, §17.4's local history, and §17.5's
-extension host invariants — rather than invented. Each is adversarial by design: it names the
-condition under which the stage's work would fail, not the work itself.
+The high-level design MUST contain: the problem and the context it changes; a diagram of
+the feature's place in the system showing components, external systems, and trust
+boundaries; the primary scenario traced end to end; the failure modes and what the system
+does in each; the expected impact on the resource budgets in Architectural Constraints;
+and the alternatives considered with the reason each was rejected.
 
-**The acceptance test for the roadmap as a whole is the daily-driver test:** a full day of real
-backend work in Vulcan with no fallback to IntelliJ.
+The low-level design MUST contain: the domain entities and value objects with their
+invariants; each use case with its input and output types; each inbound and outbound port
+with its signature; each adapter with the technology it wraps, referencing `plan.md`; the
+error taxonomy and where errors are translated across boundaries; persistence and
+migration impact; the test plan expressed in the tiers defined by Principle V; and the
+observability signals the feature emits.
 
-**Diagnosing a missed budget.** Per §19.3, a latency miss is presumed to be an architecture defect
-until proven otherwise:
+Diagrams MUST be authored as text, in Mermaid or an equivalent diff-readable format.
+Rationale: an image cannot be reviewed in a diff, and a diagram that cannot be reviewed
+in a diff stops matching the system within a release or two.
 
-- Typing over budget after Principles I and II are applied → a hot-path defect. Fix the hot path.
-  Do not consider a rewrite.
-- Remote typing slower than local → a network hop has reached the hot path. Find it. Do not tune
-  the transport.
-- Stage 0 exceeding ~2 months, or stalling on the UI framework → a stack problem, not a principle
-  problem. Reopen `docs/adr/0001-technology-stack.md` under its revisit triggers. Only escalate to
-  a constitutional amendment if no stack satisfying the Section 2 constraints is reachable.
+A design document for a user-facing feature MUST include a prototype mapping section
+naming the region of `mockups/Vulcan-IDE.html` the feature implements, the tokens it
+consumes, and every prototype extension the feature introduces with its sign-off status.
 
-**Build ergonomics.** Slow compilation on a 5-core machine is an accepted, budgeted cost of a
-native core, not a reason to revisit one. Whatever the stack, fast incremental builds are
-expected practice rather than an optimization; the specific measures are recorded in
-`docs/adr/0001-technology-stack.md`.
+`specs/features-map.md` uses these conventions. Features are listed with an immutable
+`F<NNN>` identity, the dependencies they declare, and a `[P]` marker when they are
+independent of their neighbours. Each feature carries a checkbox, and each subfeature
+carries its own checkbox beneath it.
+
+Spec Kit assigns specification directory numbers sequentially as `/speckit-specify` is
+run, which is a different numbering from the `F<NNN>` identities and will diverge from
+them as features are inserted. When a feature is specified, its map entry MUST record the
+resulting `specs/<NNN>-<slug>` path, so that the two numbering schemes stay reconcilable
+and a reader can move between the backlog and the specifications without guessing.
+
+The following gates apply to every change:
+
+1. Boundary check: an automated import-boundary rule MUST run in CI and fail the
+   build on any inward-dependency violation described in Principle I. Until such a
+   rule exists for a given language in this repository, adding it is a prerequisite
+   of the first feature written in that language.
+2. Port coverage: any new external dependency introduced by a change MUST arrive with
+   a port, an adapter, and a contract test suite in the same change.
+3. Test gate: domain and use-case tests MUST pass without network, database, or
+   filesystem access. A test in those layers that requires infrastructure is a defect
+   in the boundary, not in the test.
+4. Review gate: a reviewer MUST be able to name, from the diff alone, which layer each
+   added file belongs to. Files that do not fit a layer MUST be relocated or the
+   design revisited before merge.
+5. Performance gate: the budget suite from Architectural Constraints MUST run in CI on a
+   runner constrained to the baseline machine. Exceeding any budget fails the build. A
+   regression of more than 10 percent on any budget metric, even while still under
+   budget, MUST be explained in the pull request before merge.
+
+6. Test completeness gate: every pull request that changes behavior MUST state which
+   test tiers it touches and carry the corresponding tests, or name the omitted tier and
+   the reason it does not apply. A reviewer MUST treat an unexplained missing tier as a
+   blocking finding.
+
+7. Design gate: a feature's design document MUST be committed before its first
+   implementation commit, and every implementation pull request MUST link to it. A pull
+   request that diverges from the linked document without updating it in the same change
+   is a blocking finding.
+
+8. Fidelity gate: user-facing changes MUST pass a visual regression comparison against
+   renders of `mockups/Vulcan-IDE.html` at the prototype's viewport, and MUST pass a lint
+   rule rejecting design values that are not extracted prototype tokens. An unapproved
+   visual diff or an off-token literal fails the build.
+
+9. Sequence gate: before a feature is specified, its declared dependencies in
+   `specs/features-map.md` MUST all be checked, and the feature's own entry MUST be
+   unchecked. A specification produced out of sequence, or produced for a feature whose
+   dependencies are incomplete, is a blocking finding. This gate is enforced automatically
+   by the `featuremap` extension's mandatory `before_specify` hook, which refuses to create
+   a specification directory when the sequence is violated.
+
+Complexity that violates a principle MUST be justified in the feature's plan under an
+explicit exception entry naming the principle, the reason, and the simpler alternative
+that was rejected. An unjustified violation is a blocking review finding.
 
 ## Governance
 
-This constitution supersedes all other development practices for Vulcan. Where a plan, spec, task
-list, or review comment conflicts with it, this document wins.
+This constitution supersedes conflicting practices, conventions, and habits in this
+repository. Where a tool default and this document disagree, this document wins and
+the tool is reconfigured.
 
-**Amendment procedure.** An amendment MUST be a written change to this file that states the
-principle affected, the evidence motivating the change, and the migration consequence for work
-already specified or built. Amendments that weaken a performance or isolation guarantee MUST cite
-measurement, not preference. Where an amendment changes an obligation, `vulcan-system-design.md`
-MUST be updated in the same change so the two never disagree. Where the amendment exists because
-the design doc was factually right and a principle here was not, the correction lands here and the
-design doc is left alone.
+Amendments MUST be made by editing this file, MUST state the rationale in the sync
+impact report at the top, and MUST include a migration note when existing code is put
+out of compliance.
 
-**Versioning policy.** Semantic versioning on this document:
+Versioning follows semantic versioning of governance intent:
 
-- **MAJOR** — a principle is removed, or redefined in a way that permits something it previously
-  forbade.
-- **MINOR** — a principle or normative section is added, or existing guidance is materially
-  expanded.
-- **PATCH** — clarification, wording, or typo fixes that change no obligation.
+- MAJOR: a principle is removed, or redefined in a way that invalidates compliant code.
+- MINOR: a principle or section is added, or existing guidance is materially expanded.
+- PATCH: clarification, wording, or typo correction that does not change what is required.
 
-**Compliance review.** Every plan produced by `/speckit-plan` and every task list produced by
-`/speckit-tasks` MUST be checked against these principles before implementation begins, and the
-check MUST name the principles reviewed. Complexity that cannot be justified against a principle
-is removed, not documented. Principle I violations are blocking and are not subject to
-"we will optimize it later."
+Compliance is reviewed at three points: at `/speckit-plan`, where the plan records how
+the feature satisfies each principle; at review time, through the gates above; and on
+amendment, when open work is assessed against the new version.
 
-**Relationship to other documents.** `vulcan-system-design.md` is the evidence base and the
-reference for how these principles are implemented; it is not itself governance. Architecture
-decision records under `docs/adr/` hold the revisable choices this constitution constrains but
-does not make — chiefly the implementation stack. An ADR MUST cite the constraints it is
-answering, and MAY be superseded by a later ADR without amending this constitution, provided
-those constraints still hold; an ADR that cannot satisfy them requires an amendment first.
-`mockups/Vulcan IDE.html` is the approved interface specification governed by Principle IX; it is
-authoritative within that scope and silent outside it. `CLAUDE.md`, once written, carries the
-working conventions that follow from this constitution.
-
-**Version**: 1.1.0 | **Ratified**: 2026-09-16 | **Last Amended**: 2026-09-16
+**Version**: 4.3.0 | **Ratified**: 2026-09-18 | **Last Amended**: 2026-09-20

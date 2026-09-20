@@ -1,0 +1,10 @@
+[package]
+name = "vulcan-domain"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+
+[package.metadata.vulcan]
+layer = "Domain"
+
+[dependencies]

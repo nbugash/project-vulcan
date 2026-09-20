@@ -1,0 +1,13 @@
+[package]
+name = "vulcan-ui"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+
+[package.metadata.vulcan]
+layer = "Adapters"
+
+[dependencies]
+gpui = "0.2.2"
+vulcan-app = { path = "../vulcan-app" }
+vulcan-domain = { path = "../vulcan-domain" }
