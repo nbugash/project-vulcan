@@ -11,7 +11,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-IMAGE="${VULCAN_PINNED_IMAGE:-vulcan-pinned-env:2}"
+IMAGE="${VULCAN_PINNED_IMAGE:-vulcan-pinned-env:3}"
 VIEWPORT="${VULCAN_VIEWPORT:-1440x900}"
 RUNTIME="${CONTAINER_RUNTIME:-$(command -v podman || command -v docker || true)}"
 

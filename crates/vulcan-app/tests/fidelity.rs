@@ -128,3 +128,21 @@ fn a_literal_outside_the_set_fails_and_names_its_location() {
     assert!(verdict.findings()[0].contains("#ff0000"));
     assert!(verdict.findings()[0].contains("shell.rs:12"));
 }
+
+/// A flat image is what a capture of a compositor whose client never drew looks
+/// like. The pinned image once pointed `VK_ICD_FILENAMES` at a filename its own
+/// distribution does not use; the loader enumerated no driver, the shell drew
+/// nothing, and `capture-reference` signed the blank result off as the
+/// reference. Counting colours is how capture tells drawing from not drawing.
+#[test]
+fn a_flat_image_holds_one_colour() {
+    assert_eq!(image(0).distinct_colours(16), 1);
+}
+
+#[test]
+fn counting_colours_stops_at_the_limit_it_is_given() {
+    let pixels: Vec<u8> = (0u8..64).collect();
+    let image = Image { viewport: Viewport { width: 16, height: 1 }, pixels };
+    assert_eq!(image.distinct_colours(16), 16);
+    assert_eq!(image.distinct_colours(4), 4);
+}

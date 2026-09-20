@@ -14,11 +14,17 @@
 FROM docker.io/library/rust:1.98-slim-bookworm
 
 ENV VULCAN_PINNED_ENV=1 \
-    VULCAN_PINNED_ENV_VERSION=2 \
+    VULCAN_PINNED_ENV_VERSION=3 \
     WLR_BACKENDS=headless \
     WLR_RENDERER=pixman \
     WLR_LIBINPUT_NO_DEVICES=1 \
-    VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
+    # Debian names lavapipe's manifest with the architecture in it; Ubuntu does
+    # not. This pointed at the Ubuntu name, which does not exist here, and the
+    # Vulkan loader answers a manifest path that is not there by enumerating no
+    # driver at all rather than by failing. GPUI then had no device, the shell
+    # drew nothing, and the capture was a flat colour. The RUN below asserts the
+    # file exists so a rename breaks the build instead of the pixels.
+    VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
 
 # Three groups. sway and grim run the session. The runtime libraries are what
 # the product links against, absent at first, so the compositor started and the
@@ -72,6 +78,12 @@ ENV HOME=/tmp \
 COPY mockups/fonts /usr/share/fonts/truetype/vulcan-inter
 COPY mockups/icons /usr/share/fonts/truetype/vulcan-phosphor
 RUN fc-cache -f
+
+# Lavapipe is the only renderer here, and a missing manifest is silent at run
+# time. Fail at build time instead.
+RUN test -f "${VK_ICD_FILENAMES}" \
+    || { echo "lavapipe manifest ${VK_ICD_FILENAMES} is absent; these exist:" >&2; \
+         ls /usr/share/vulkan/icd.d/ >&2; exit 1; }
 
 WORKDIR /work
 USER vulcan

@@ -13,6 +13,11 @@ use vulcan_domain::rendering::{Image, Viewport};
 
 use super::reference_store::read_png;
 
+/// The floor a real render clears without trying. The shell's own reference
+/// holds hundreds; an empty desktop holds one. Set low on purpose: this
+/// distinguishes drawing from not drawing, and is not a fidelity judgement.
+const MINIMUM_COLOURS: usize = 16;
+
 pub struct GpuiCaptureAdapter {
     preview_binary: PathBuf,
     settle: std::time::Duration,
@@ -81,6 +86,20 @@ impl RenderCapturePort for GpuiCaptureAdapter {
             return Err(RenderError::Failed(format!(
                 "captured {}x{}, expected {}x{}",
                 image.viewport.width, image.viewport.height, viewport.width, viewport.height
+            )));
+        }
+        // A capture with almost no colour in it is the compositor's empty
+        // desktop, not the product. The pinned image once pointed
+        // VK_ICD_FILENAMES at a filename its own distribution does not use, so
+        // the Vulkan loader enumerated no driver, the shell drew nothing, and
+        // `capture-reference` wrote the blank result out as the signed-off
+        // reference and reported PASS. A gate must not be able to pass by
+        // producing nothing.
+        let colours = image.distinct_colours(MINIMUM_COLOURS);
+        if colours < MINIMUM_COLOURS {
+            return Err(RenderError::Failed(format!(
+                "the capture holds {colours} distinct colours, fewer than the {MINIMUM_COLOURS} \
+                 any rendered interface has: the shell did not draw"
             )));
         }
         Ok(image)

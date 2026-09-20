@@ -2,6 +2,6 @@
   "viewport": { "width": 1440, "height": 900 },
   "typefaces": ["Inter 400/500/600", "Phosphor 2.1.1"],
   "prototype_digest": "fnv1a:6dc3098849259ba6",
-  "environment_digest": "2",
+  "environment_digest": "3",
   "captured_at": "captured"
 }
