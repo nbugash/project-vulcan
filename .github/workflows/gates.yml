@@ -137,8 +137,12 @@ jobs:
         # is left to fail on any non-zero rather than being softened.
         run: |
           cargo build --workspace --quiet
+          # 0ms only. The other profiles need dnctl and pfctl, which need sudo
+          # this job does not have, and the gate refuses rather than reporting a
+          # latency that was never applied. Those profiles are covered by
+          # `make macos-verify-sudo` on a real Mac.
           cargo run --quiet -p gate-budget -- \
-            --runner apple-silicon \
+            --runner apple-silicon --rtt 0 \
             --report reports/budgets/apple-silicon.json
 
       - name: Publish the measurement report

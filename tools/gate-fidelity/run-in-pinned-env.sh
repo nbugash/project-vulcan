@@ -18,7 +18,18 @@ RUNTIME="${CONTAINER_RUNTIME:-$(command -v podman || command -v docker || true)}
 # Inside the pinned environment already: start a session and run the gate.
 if [[ "${VULCAN_PINNED_ENV:-0}" == "1" && "${VULCAN_SESSION:-0}" != "1" ]]; then
   export VULCAN_SESSION=1
-  mkdir -p "${XDG_RUNTIME_DIR:-/run/vulcan}" && chmod 700 "${XDG_RUNTIME_DIR:-/run/vulcan}"
+  # The image already creates this owned by the session user with the right
+  # mode. Outside the image it may not exist. Create it when missing, and only
+  # tighten a directory this process owns: chmod on someone else's fails, which
+  # is what stopped the compositor the first time CI ran the container as a
+  # non-root user.
+  runtime="${XDG_RUNTIME_DIR:-/run/vulcan}"
+  [ -d "${runtime}" ] || mkdir -p "${runtime}"
+  # An `&&` list here would end the script under `set -e` whenever the test is
+  # false, which is the common case.
+  if [ -O "${runtime}" ]; then
+    chmod 700 "${runtime}"
+  fi
 
   config="$(mktemp)"
   {
