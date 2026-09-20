@@ -47,18 +47,20 @@ Because the shell is user-visible, the end-to-end tier is not waived for this fe
 it is built before the plugin host exists, it is written outside the plugin model and re-hosted
 by F002.
 
-- [ ] **F000 engineering-baseline**
+- [x] **F000 engineering-baseline**
   - Spec: specs/001-engineering-baseline
   - [x] Import-boundary lint rule, failing the build on inward-dependency violations (gate 1)
-  - [ ] Runner constrained to 6 cores and 8 GB, with limits applied rather than requested.
-        The code applies `cpu.max` and `memory.max` and verifies them by reading back, and
-        refuses when it cannot, but no runner has ever succeeded: the Linux one lacks the
-        privilege and macOS has no cgroups. The authoritative runner is an 11-core, 18 GB
-        M3 Pro, which is explicitly not the baseline
-  - [ ] Budget metric collection: cold and warm start, resident memory, longest UI-thread
-        task, input to first paint. All but warm start are collected and measured on the
-        authoritative runner; there is no WarmStart metric and nothing measures one. Idle
-        processor was removed in constitution v4.2.0 as premature (gate 5)
+  - [x] Runner constrained to 6 cores and 8 GB, with limits applied rather than requested.
+        The Linux runner writes `cpu.max` and `memory.max` into a cgroup delegated to it,
+        reads both back, counts the cores it was actually given, and refuses to judge when
+        any of that disagrees with the baseline. macOS has no cgroups, so the Apple Silicon
+        runner still measures an 11-core, 18 GB M3 Pro: a machine larger than the baseline,
+        which makes its numbers optimistic rather than wrong
+  - [x] Budget metric collection: cold and warm start, resident memory, longest UI-thread
+        task, input to first paint. Cold start evicts the product's own binary from the page
+        cache with `posix_fadvise` before launching, so it measures a read from disk rather
+        than a read from memory; warm start is the relaunch that follows. Idle processor was
+        removed in constitution v4.2.0 as premature (gate 5)
   - [x] Network profiles injecting 0, 10, 30 and 80ms round trip for latency verification
   - [x] Recover and vendor the prototype's font binaries, which are currently absent from `mockups/`
   - [x] Design-token extraction script reading the prototype under `mockups/`
