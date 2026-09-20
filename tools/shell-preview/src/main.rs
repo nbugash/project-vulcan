@@ -121,6 +121,7 @@ fn main() {
                 // Linux hid this: there the frame loop runs regardless, so the
                 // input-to-paint figures happened to be collected.
                 let _ = window.update(cx, |_, win, _| win.activate_window());
+                let mut trace: Vec<(u32, usize, bool)> = Vec::new();
 
                 // Let the first frame land, then record a run of frames.
                 cx.background_executor()
@@ -144,14 +145,35 @@ fn main() {
                             _ => shell.toggle_hud(),
                         }
                         cx.notify();
-                        // Ask the window for a frame as well as marking the view
-                        // dirty. `notify` reaches the window only through the
-                        // invalidator registered for this entity; `refresh` is
-                        // the window's own documented way to say redraw me, and
-                        // the two disagreeing is not a difference worth relying
-                        // on when the whole point is to count frames.
                         win.refresh();
                     });
+                    // Deliberately no forced draw here.
+                    //
+                    // Calling Window::draw directly does make macOS produce
+                    // frames, and it was tried: KeystrokeToPaint on Linux fell
+                    // from 9.38 ms to 1.09 ms, because drawing on demand skips
+                    // the wait for the compositor's next frame. That wait is
+                    // latency a user pays on every keystroke, and a budget that
+                    // excludes it measures the renderer rather than the product.
+                    // The number would have looked better and meant less.
+                    //
+                    // So the loop keeps asking for a frame and letting the
+                    // platform decide when to give one. Where the platform never
+                    // does, the trace below says so rather than the measurement
+                    // quietly becoming something else.
+
+                    // Every fiftieth step, record how many frames have actually
+                    // landed. A count that stops climbing is the difference
+                    // between a shell that will not respond and a window the
+                    // compositor will not draw, and it is the one thing the
+                    // earlier reports could not tell us.
+                    if step % 50 == 0 {
+                        let frames = instrument.sample_count(Span::UiThreadTask);
+                        let active = cx
+                            .update_window(window.into(), |_, win, _| win.is_window_active())
+                            .unwrap_or(false);
+                        trace.push((step, frames, active));
+                    }
                     cx.background_executor()
                         .timer(std::time::Duration::from_millis(8))
                         .await;
@@ -194,6 +216,11 @@ fn main() {
                     "measured: {painted} input-to-paint samples, {last} frames in total, \
                      window active: {active}"
                 );
+                let steps: Vec<String> = trace
+                    .iter()
+                    .map(|(step, frames, active)| format!("{step}:{frames}{}", if *active { "*" } else { "" }))
+                    .collect();
+                eprintln!("frames by input step (step:frames, * = window active): {}", steps.join(" "));
                 instrument.sample_memory();
 
                 let report = instrument.to_json(Runner::LinuxCgroup, "unconstrained", 0);
