@@ -27,7 +27,7 @@ pub(crate) fn run_measured(
     // binary off disk against a system already warm, which is what this evicts.
     // It needs no privilege, so the same measurement is available in CI.
     let binary = preview_binary();
-    evict_from_page_cache(&binary);
+    let went_cold = evict_from_page_cache(&binary);
 
     let report_path = std::env::temp_dir().join(format!("vulcan-measure-{round_trip_ms}.json"));
     let _ = std::fs::remove_file(&report_path);
@@ -85,8 +85,20 @@ pub(crate) fn run_measured(
             report_path.display()
         );
     }
+    // Where the binary could not be evicted, the first launch read it from the
+    // page cache and what it timed is a warm start. Reporting that as ColdStart
+    // would be the mislabelling this eviction exists to end, so the metric is
+    // dropped instead: a platform that cannot make the measurement says so.
+    if !went_cold {
+        eprintln!(
+            "note: {} could not be evicted from the page cache on this platform, so cold \
+             start is not reported; the warm figure stands on its own",
+            binary.display()
+        );
+    }
     let mut measurements: Vec<BudgetMeasurement> = Metric::ALL
         .iter()
+        .filter(|metric| went_cold || **metric != Metric::ColdStart)
         .filter_map(|metric| {
             parsed
                 .iter()
@@ -135,21 +147,37 @@ fn preview_binary() -> std::path::PathBuf {
     std::path::Path::new(&target).join("debug").join("shell-preview")
 }
 
-/// Asks the kernel to drop this file from the page cache.
+/// Asks the kernel to drop this file from the page cache. Reports whether it
+/// could.
 ///
 /// `POSIX_FADV_DONTNEED` over the whole file. Advice rather than a command: the
 /// kernel keeps pages another process is using, which is the behaviour wanted
 /// here — system libraries stay resident and only the product goes cold.
-fn evict_from_page_cache(path: &std::path::Path) {
+#[cfg(target_os = "linux")]
+fn evict_from_page_cache(path: &std::path::Path) -> bool {
     use std::os::unix::io::AsRawFd;
 
     let Ok(file) = std::fs::File::open(path) else {
-        return;
+        return false;
     };
     let length = file.metadata().map(|m| m.len()).unwrap_or(0) as libc::off_t;
 
     // Safety: a file this process opened, advised over its own length.
-    unsafe {
-        libc::posix_fadvise(file.as_raw_fd(), 0, length, libc::POSIX_FADV_DONTNEED);
-    }
+    let result = unsafe {
+        libc::posix_fadvise(file.as_raw_fd(), 0, length, libc::POSIX_FADV_DONTNEED)
+    };
+    result == 0
+}
+
+/// Darwin has no `posix_fadvise` and no unprivileged way to evict a file from
+/// the unified buffer cache: `F_NOCACHE` changes how one descriptor reads, it
+/// does not drop pages already resident, and `purge` needs root.
+///
+/// So this reports failure rather than pretending. The caller withholds cold
+/// start on this platform, which is a real gap in what macOS can measure and
+/// better named than papered over — the alternative is a warm launch reported
+/// under a cold name, which is the defect this whole path exists to remove.
+#[cfg(not(target_os = "linux"))]
+fn evict_from_page_cache(_path: &std::path::Path) -> bool {
+    false
 }
