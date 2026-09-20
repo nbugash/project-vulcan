@@ -64,5 +64,5 @@ mockups/fonts/ttf/
 # `make macos-verify` clears this directory before it writes, so what is tracked
 # is one run rather than an accumulation.
 
-reports/macos
+reports/macos/*
 !reports/macos/.gitkeep
