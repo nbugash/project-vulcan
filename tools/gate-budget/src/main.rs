@@ -36,8 +36,19 @@ fn main() {
         ),
     };
 
-    if let (Some(report), Some(path)) = (report, args.flag("report").map(PathBuf::from)) {
-        let _ = report.write(&path);
+    // `--report` is consumed into `args.report_path` by the shared parser and
+    // never reaches `flags`, so the `args.flag("report")` this used to ask for
+    // was always None and the measurement report was never written. Every
+    // budget report this gate has produced held a verdict and no numbers.
+    //
+    // Beside the gate report rather than onto it: the verdict summary has the
+    // same shape for every gate and CI reads it, so it keeps the requested path
+    // and the detail moves one name over.
+    if let (Some(report), Some(path)) = (report, args.report_path.as_deref()) {
+        let path = measurements_path(std::path::Path::new(path));
+        if let Err(error) = report.write(&path) {
+            eprintln!("warning: could not write measurements to {}: {error}", path.display());
+        }
     }
 
     let context = vec![
@@ -74,5 +85,27 @@ fn execute<R: ConstrainedRunnerPort>(
             (Ok(output.verdict), Some(report))
         }
         Err(error) => (Err(error), None),
+    }
+}
+
+/// `reports/budgets/linux-cgroup.json` becomes
+/// `reports/budgets/linux-cgroup-measurements.json`.
+fn measurements_path(report: &std::path::Path) -> PathBuf {
+    let stem = report.file_stem().and_then(|s| s.to_str()).unwrap_or("budgets");
+    let extension = report.extension().and_then(|s| s.to_str()).unwrap_or("json");
+    report.with_file_name(format!("{stem}-measurements.{extension}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::measurements_path;
+    use std::path::Path;
+
+    #[test]
+    fn the_detail_lands_beside_the_summary_and_never_on_it() {
+        let summary = Path::new("reports/budgets/linux-cgroup.json");
+        let detail = measurements_path(summary);
+        assert_eq!(detail, Path::new("reports/budgets/linux-cgroup-measurements.json"));
+        assert_ne!(detail, summary);
     }
 }
