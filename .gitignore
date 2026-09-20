@@ -57,8 +57,9 @@ mockups/fonts/ttf/
 
 !docs/
 
-# Results from a run on a Mac. Carried here by hand when there is something to
-# look at, and not kept afterwards.
-reports/macos/*
-!reports/macos/.gitkeep
-!reports/macos/README.md
+# Results from a run on a Mac, and the only directory under reports/ that is
+# kept. The Apple Silicon runner is the authoritative one and nobody else can
+# reach that machine, so its verdicts exist nowhere but here — ignoring them
+# left the project with no record of the numbers that actually decide the gate.
+# `make macos-verify` clears this directory before it writes, so what is tracked
+# is one run rather than an accumulation.
