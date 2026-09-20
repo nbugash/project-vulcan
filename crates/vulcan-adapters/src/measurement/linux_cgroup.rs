@@ -24,23 +24,30 @@ impl ConstrainedRunnerPort for LinuxCgroupRunner {
     /// machine was — which is a fabricated measurement context, the exact thing
     /// FR-005 forbids.
     fn assert_constraints(&self) -> Result<CoreTopology, ConstraintError> {
-        let root = std::path::Path::new(CGROUP_ROOT);
-        if !root.join("cgroup.controllers").exists() {
-            return Err(ConstraintError::NotEnforceable(
-                "cgroup v2 is not mounted at /sys/fs/cgroup".into(),
-            ));
-        }
-
-        // A quota can name more cores than the machine has. The kernel accepts
+        // Core count first, because it is the one refusal nothing can lift. A
+        // quota can name more cores than the machine has: the kernel accepts
         // it, `cpu.max` reads it back, and the gate would report a six-core
         // measurement from a four-core runner. The limit has to be a ceiling on
         // something that exists.
+        //
+        // Ahead of the cgroup check so that a small machine is told what is
+        // actually wrong with it. Answering "cgroup v2 is not mounted" sends a
+        // reader to fix a mount or a permission that will not help, and on a
+        // platform with no cgroups at all — macOS — it is the less informative
+        // of two true statements.
         let present = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(0);
         if present < CORES as usize {
             return Err(ConstraintError::NotEnforceable(format!(
                 "the baseline is {CORES} cores and this machine has {present}; a quota cannot \
                  conjure cores it does not have, and a limit above the hardware is not a limit"
             )));
+        }
+
+        let root = std::path::Path::new(CGROUP_ROOT);
+        if !root.join("cgroup.controllers").exists() {
+            return Err(ConstraintError::NotEnforceable(
+                "cgroup v2 is not mounted at /sys/fs/cgroup".into(),
+            ));
         }
 
         let group = root.join(GROUP);

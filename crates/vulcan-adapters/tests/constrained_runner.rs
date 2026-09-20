@@ -42,9 +42,16 @@ fn the_runner_refuses_when_it_cannot_apply_the_limits() {
 
 #[test]
 fn a_machine_with_too_few_cores_is_refused_before_any_quota_is_written() {
-    // CI runners have four cores. Writing a six-core quota there succeeds, and
-    // `cpu.max` reads back six, so the gate would report a baseline measurement
-    // from hardware that cannot provide one.
+    // Hosted runners are smaller than the baseline — four cores on Linux, three
+    // on macOS. Writing a six-core quota on one succeeds, and `cpu.max` reads
+    // back six, so the gate would report a baseline measurement from hardware
+    // that cannot provide one.
+    //
+    // The core count is checked ahead of everything else, so a machine too
+    // small to be the baseline is told so whatever else is wrong with it. This
+    // test asserted that and then failed on macOS, where the runner used to
+    // refuse for the absence of cgroups first: a true answer, and the less
+    // useful of the two.
     let present = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(0);
     match LinuxCgroupRunner.assert_constraints() {
         Err(ConstraintError::NotEnforceable(reason)) if present < 6 => {
