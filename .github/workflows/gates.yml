@@ -48,11 +48,35 @@ jobs:
           python3 .specify/extensions/featuremap/scripts/python/feature_map.py verify
           python3 .specify/extensions/featuremap/scripts/python/feature_map.py resolve
       - name: Gate 9 - blocks a feature whose dependencies are unfinished
-        # A gate never seen to block has not been validated. F001 depends on
-        # F000, which is unfinished, so this must exit 2 rather than resolve.
+        # A gate never seen to block has not been validated, and exit 2 is part
+        # of the command-line contract that calling resolve() in a unit test
+        # does not exercise.
+        #
+        # Against a fixture rather than specs/features-map.md. This step used to
+        # resolve F001, whose dependency F000 was unfinished, and it passed for
+        # as long as that stayed true — then F000 was completed and the step
+        # failed, having proved nothing about the gate. A negative test anchored
+        # to live project state expires the moment the project advances, and
+        # naming a different real feature only moves the expiry date.
         run: |
+          fixture="$(mktemp -d)/features-map.md"
+          cat > "${fixture}" <<'MAP'
+          # Fixture
+
+          ## Tier 0
+
+          - [ ] **F900 unfinished-dependency**
+            - Spec: specs/900-unfinished-dependency
+            - [ ] Something nobody has done
+          - [ ] **F901 blocked-on-it** (depends: F900)
+            - Spec: specs/901-blocked-on-it
+            - [ ] Something that cannot start
+          MAP
+          sed -i 's/^          //' "${fixture}"
+
           set +e
-          python3 .specify/extensions/featuremap/scripts/python/feature_map.py resolve F001
+          python3 .specify/extensions/featuremap/scripts/python/feature_map.py \
+            resolve F901 --map "${fixture}"
           code=$?
           set -e
           if [ "$code" -ne 2 ]; then
