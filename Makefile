@@ -117,7 +117,7 @@ prerequisites: ## Every gate refuses rather than passes without its prerequisite
 .PHONY: fonts
 fonts: ## Rebuild assets/fonts from the woff2 the prototype vendors
 	./tools/build-fonts.sh
- 
+  
 .PHONY: screenshots
 screenshots: ## Capture every notable state for review (gitignored)
 	./tools/screenshots.sh

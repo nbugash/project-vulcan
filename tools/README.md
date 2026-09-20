@@ -118,6 +118,19 @@ When the prototype itself changes, `compare` reports a **stale reference** rathe
 regression, naming the digest that moved. Re-approve the interface; do not re-baseline to make
 it green.
 
+`compare` does not run on every push, unlike the other three subcommands. It compiles the
+workspace a second time inside the pinned image — which needs its own target directory,
+because the image's glibc is older than the runner's — and a cold GPUI build on a four-core
+hosted runner ran past twenty-three minutes without finishing, against SC-007's fifteen for
+the whole suite. It runs from the Actions tab (`workflow_dispatch`, the `fidelity-comparison`
+job) and from `make compare`, which takes about six seconds warm.
+
+That fits how the gate is actually used. The reference can only be captured inside this same
+image, so approving one has always been something a person does in the pinned environment;
+the comparison now lives in the same place. What still runs on every push is everything that
+can: the off-token lint, discrepancy triage, extraction, and the check that extraction is
+deterministic.
+
 ### The capture environment renders in software
 
 The pinned environment runs a headless `sway` session on the wlroots headless backend, with
@@ -178,6 +191,11 @@ nothing. Measured on the development machine with a warm `target/`:
 | Gate 8, compare, including the pinned session | ~6 s per capture |
 
 **Total: well under one minute warm**, against a fifteen-minute budget.
+
+Cold is a different number, and CI is never warm. A cold GPUI build dominates everything, and
+inside the pinned image it has to happen a second time because that image's glibc differs from
+the runner's. That is why `compare` is not in the per-push suite: the figure above is honest
+about its basis and says nothing about the one environment that always starts from nothing.
 
 Two honest caveats. A cold build dominates everything above — GPUI and its dependencies take
 minutes to compile from scratch, and that cost is the build cache's, not the suite's. And the
