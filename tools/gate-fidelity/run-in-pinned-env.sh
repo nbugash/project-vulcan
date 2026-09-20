@@ -55,6 +55,11 @@ fi
 # Inside a session: run the gate, then exit the compositor with its code.
 if [[ "${1:-}" == "__in_session__" ]]; then
   shift
+  # The gate spawns the shell, so the shell has to exist. `cargo run -p
+  # gate-fidelity` builds the gate and nothing else, and the capture then failed
+  # with "No such file or directory" for a binary no step had produced.
+  cargo build --quiet -p shell-preview || exit 1
+
   set +e
   cargo run --quiet -p gate-fidelity -- "$@"
   code=$?

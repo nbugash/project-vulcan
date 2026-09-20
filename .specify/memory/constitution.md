@@ -1,5 +1,40 @@
 <!--
 SYNC IMPACT REPORT
+Version change: 4.2.0 -> 4.3.0
+Bump rationale: MINOR. A budget is added and an existing one is given the
+definition it always needed.
+
+Added: warm start, 150 ms.
+
+Defined: cold start. The figure was stated without saying what "cold" means, and
+the three readings of it differ by a factor of eight — 92 ms with everything
+cached, 203 ms with the product's own binary evicted, 1568 ms with the whole
+page cache dropped. Until now the gate measured the first of those and called it
+the third. Every cold start this project recorded was a second launch in
+disguise, because the binary was still resident from the build that produced it.
+
+Cold start is now: the product's own files evicted from the page cache, the
+system's left alone. That is what a first launch of the day costs on a machine
+that has been running. Dropping the entire cache measures a machine nobody uses,
+and needs privilege the build does not have; leaving the cache alone measures a
+relaunch. Only this definition is both realistic and available to CI, which is
+what makes it enforceable.
+
+Measured at the baseline's envelope — six cores and 8 GB, cgroup-enforced, on a
+release build — cold start is 203 ms against its 300 ms budget and warm start
+96 ms against 150 ms. The 300 ms figure predates any measurement and turns out
+to be about right; it was the measurement that was wrong, in both directions.
+
+Budgets are measured against a release build. A debug build of this product is
+508 MB against release's 25, and reading the difference off disk is a second of
+cold start that describes the build profile rather than the product.
+
+Modified principles: VI, one budget added and one defined.
+Added sections: none. Removed sections: none. Deferred items: none.
+-->
+
+<!--
+SYNC IMPACT REPORT
 Version change: 4.1.0 -> 4.2.0
 Bump rationale: MINOR. A Principle VI budget is removed. Code compliant before
 is compliant after; what is required has narrowed.
@@ -640,7 +675,8 @@ rather than an empty project.
 | Scroll tick to paint | 8 ms p99 |
 | Longest task on the UI thread | 8 ms |
 | Highlight update after an edit | 16 ms, off the UI thread |
-| Cold start to a rendered file | 300 ms |
+| Cold start to a rendered file | 300 ms, the product's own files evicted from the page cache |
+| Warm start to a rendered file | 150 ms, a relaunch with everything cached |
 | Fuzzy file open across 100,000 files | 50 ms per query |
 | Project text search, first results | 500 ms |
 | Completion popup | 250 ms p95 end to end, at a round trip of 80 ms or less, never blocking |
@@ -652,7 +688,10 @@ rather than an empty project.
 The 8 ms figures are one frame at 120Hz: a task that exceeds them drops a frame, which is
 what the product's central claim of being measurably snappier rests on. Cold start excludes
 indexing, plugin activation and language servers, none of which may block a file being
-rendered. The completion budget is stated end to end against a reference round trip of 80 ms,
+rendered. It is measured with the product's own binary dropped from the page cache and the
+system's left resident, which is what a first launch of the day costs; measuring with
+everything cached reports a relaunch, and dropping the whole cache reports a machine nobody
+uses. Both start figures are taken against a release build, since that is what ships. The completion budget is stated end to end against a reference round trip of 80 ms,
 which leaves 170 ms for the client, serialisation, server work and render combined. It is
 stated that way rather than as an absolute figure because the language server is frequently
 on another machine, and no architecture beats the propagation delay to it.
@@ -786,4 +825,4 @@ Compliance is reviewed at three points: at `/speckit-plan`, where the plan recor
 the feature satisfies each principle; at review time, through the gates above; and on
 amendment, when open work is assessed against the new version.
 
-**Version**: 4.2.0 | **Ratified**: 2026-09-18 | **Last Amended**: 2026-09-19
+**Version**: 4.3.0 | **Ratified**: 2026-09-18 | **Last Amended**: 2026-09-20

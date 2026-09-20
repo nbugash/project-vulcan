@@ -54,13 +54,28 @@ impl ConstrainedRunnerPort for LinuxCgroupRunner {
 
         // Delegation first: a controller that is not enabled in the parent
         // cannot be set in the child, and the write below would be ignored.
-        write(&root.join("cgroup.subtree_control"), "+cpu +memory")?;
+        //
+        // Only when it is needed. Enabling a controller is the one step that
+        // requires the root of the hierarchy, and an administrator may have
+        // delegated a group with the controllers already on; demanding the write
+        // anyway refuses a machine that was correctly prepared.
+        let control = root.join("cgroup.subtree_control");
+        let enabled = std::fs::read_to_string(&control).unwrap_or_default();
+        if !(enabled.contains("cpu") && enabled.contains("memory")) {
+            write(&control, "+cpu +memory")?;
+        }
 
         // 6 cores: 600000us of runtime per 100000us period.
         write(&group.join("cpu.max"), &format!("{} {PERIOD_US}", CORES as u64 * PERIOD_US))?;
         write(&group.join("memory.max"), &MEMORY_BYTES.to_string())?;
-        // Nothing is constrained until this process is actually inside it.
-        write(&group.join("cgroup.procs"), &std::process::id().to_string())?;
+        // Nothing is constrained until this process is actually inside it —
+        // unless it already is. Moving between groups needs write access to the
+        // one being left as well as the one being joined, which a delegated
+        // user does not have; a session started inside the group is already
+        // where it needs to be.
+        if !already_inside(GROUP) {
+            write(&group.join("cgroup.procs"), &std::process::id().to_string())?;
+        }
 
         verify(&group)
     }
@@ -124,4 +139,13 @@ pub fn cores_from(cpu_max: &str) -> Option<u32> {
     let quota: u64 = parts.next()?.parse().ok()?;
     let period: u64 = parts.next()?.parse().ok()?;
     (period > 0 && quota % period == 0).then(|| (quota / period) as u32)
+}
+
+/// Whether this process is already a member of the named cgroup.
+///
+/// `/proc/self/cgroup` under cgroup v2 is a single line, `0::/path`.
+fn already_inside(group: &str) -> bool {
+    std::fs::read_to_string("/proc/self/cgroup")
+        .map(|text| text.lines().any(|line| line.trim_end().ends_with(group)))
+        .unwrap_or(false)
 }

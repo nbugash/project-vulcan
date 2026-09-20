@@ -10,6 +10,7 @@ pub enum Metric {
     LongestUiThreadTask,
     HighlightUpdate,
     ColdStart,
+    WarmStart,
     FuzzyFileOpen,
     ProjectTextSearch,
     CompletionPopup,
@@ -37,12 +38,13 @@ impl Statistic {
 
 impl Metric {
     /// The thirteen budgets Principle VI defines.
-    pub const ALL: [Metric; 12] = [
+    pub const ALL: [Metric; 13] = [
         Metric::KeystrokeToPaint,
         Metric::ScrollTickToPaint,
         Metric::LongestUiThreadTask,
         Metric::HighlightUpdate,
         Metric::ColdStart,
+        Metric::WarmStart,
         Metric::FuzzyFileOpen,
         Metric::ProjectTextSearch,
         Metric::CompletionPopup,
@@ -57,6 +59,11 @@ impl Metric {
             Metric::KeystrokeToPaint | Metric::ScrollTickToPaint | Metric::LongestUiThreadTask => 8.0,
             Metric::HighlightUpdate => 16.0,
             Metric::ColdStart => 300.0,
+            // A launch with the binary and its libraries already in the page
+            // cache. Provisional: set from measurement rather than intent, and
+            // narrower than cold start because the work it excludes is exactly
+            // the work a second launch does not repeat.
+            Metric::WarmStart => 150.0,
             Metric::FuzzyFileOpen => 50.0,
             Metric::ProjectTextSearch => 500.0,
             Metric::CompletionPopup => 250.0,
@@ -124,6 +131,7 @@ impl Metric {
             Metric::LongestUiThreadTask => "LongestUiThreadTask",
             Metric::HighlightUpdate => "HighlightUpdate",
             Metric::ColdStart => "ColdStart",
+            Metric::WarmStart => "WarmStart",
             Metric::FuzzyFileOpen => "FuzzyFileOpen",
             Metric::ProjectTextSearch => "ProjectTextSearch",
             Metric::CompletionPopup => "CompletionPopup",

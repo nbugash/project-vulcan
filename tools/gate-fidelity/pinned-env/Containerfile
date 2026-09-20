@@ -20,10 +20,12 @@ ENV VULCAN_PINNED_ENV=1 \
     WLR_LIBINPUT_NO_DEVICES=1 \
     VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
 
-# sway and grim run the session; the rest are what the product itself links
-# against at runtime. The image had only the first group, so the compositor
-# started and the shell then failed to load, leaving an empty desktop for the
-# capture — which the comparison faithfully reported as every pixel differing.
+# Three groups. sway and grim run the session. The runtime libraries are what
+# the product links against, absent at first, so the compositor started and the
+# shell then failed to load and left an empty desktop for the capture — which
+# the comparison faithfully reported as every pixel differing. The build tools
+# are here because the product is compiled inside this image rather than carried
+# in from the host, whose C library is newer than this one's.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       sway \
       grim \
@@ -37,6 +39,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libxcb-shm0 \
       libwayland-client0 \
       libfontconfig1 \
+      build-essential \
+      pkg-config \
+      libxkbcommon-dev \
+      libxkbcommon-x11-dev \
+      libxcb1-dev \
+      libxcb-render0-dev \
+      libxcb-shm0-dev \
+      libwayland-dev \
+      libfontconfig-dev \
       && rm -rf /var/lib/apt/lists/*
 
 # A default non-root user, because sway refuses to run as root. The uid is not
